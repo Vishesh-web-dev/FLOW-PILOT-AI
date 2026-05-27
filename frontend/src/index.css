@@ -1,0 +1,238 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ───────────────────────────────────
+   Global Base Styles
+─────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0f0f13;
+  color: #e2e8f0;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ───────────────────────────────────
+   Custom Scrollbar
+─────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f0f13;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a5a;
+}
+
+/* ───────────────────────────────────
+   Ant Design Overrides
+─────────────────────────────────── */
+.ant-layout {
+  background: #0f0f13 !important;
+}
+.ant-layout-sider {
+  background: #0d0d11 !important;
+}
+.ant-menu-dark {
+  background: transparent !important;
+}
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(99, 102, 241, 0.2) !important;
+}
+.ant-menu-dark .ant-menu-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+.ant-card {
+  border: 1px solid #1e1e2a !important;
+}
+.ant-modal-content {
+  border: 1px solid #1e1e2a !important;
+}
+.ant-drawer-content {
+  background: #16161d !important;
+}
+.ant-input,
+.ant-input-affix-wrapper {
+  background: #1c1c28 !important;
+  border-color: #2a2a3a !important;
+  color: #e2e8f0 !important;
+}
+.ant-input:focus,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+.ant-select-selector {
+  background: #1c1c28 !important;
+  border-color: #2a2a3a !important;
+  color: #e2e8f0 !important;
+}
+.ant-picker {
+  background: #1c1c28 !important;
+  border-color: #2a2a3a !important;
+}
+.ant-picker-input > input {
+  color: #e2e8f0 !important;
+}
+.ant-tag {
+  border-radius: 4px !important;
+}
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+.ant-timeline-item-tail {
+  border-color: #2a2a3a !important;
+}
+
+/* ───────────────────────────────────
+   Custom Components
+─────────────────────────────────── */
+.glass-card {
+  background: rgba(22, 22, 29, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid #1e1e2a;
+  border-radius: 12px;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ai-input-glow:focus-within {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15),
+              0 0 30px rgba(99, 102, 241, 0.1) !important;
+}
+
+.kanban-column-drop-active {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+}
+
+.task-card-dragging {
+  opacity: 0.5;
+  cursor: grabbing !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+  transform: rotate(2deg);
+}
+
+/* ───────────────────────────────────
+   Animations
+─────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    #1c1c28 25%,
+    #2a2a3a 50%,
+    #1c1c28 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ───────────────────────────────────
+   Priority Indicators
+─────────────────────────────────── */
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.priority-dot-LOW { background: #6b7280; }
+.priority-dot-MEDIUM { background: #f59e0b; }
+.priority-dot-HIGH { background: #ef4444; }
+.priority-dot-URGENT { background: #dc2626; animation: pulse-glow 1.5s infinite; }
+
+/* ───────────────────────────────────
+   Sidebar Nav Item
+─────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+}
+.nav-item.active {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border-left: 2px solid #6366f1;
+}
+
+/* ───────────────────────────────────
+   Recharts overrides
+─────────────────────────────────── */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #1e1e2a !important;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #16161d !important;
+  border: 1px solid #2a2a3a !important;
+  border-radius: 8px !important;
+  color: #e2e8f0 !important;
+}
