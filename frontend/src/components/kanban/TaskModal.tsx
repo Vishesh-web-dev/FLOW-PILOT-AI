@@ -101,8 +101,14 @@ export default function TaskModal({
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) =>
-      tasksApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) => {
+      // Convert null description to undefined for compatibility with CreateTaskForm
+      const fixedData = {
+        ...data,
+        description: data.description === null ? undefined : data.description,
+      };
+      return tasksApi.update(id, fixedData);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });

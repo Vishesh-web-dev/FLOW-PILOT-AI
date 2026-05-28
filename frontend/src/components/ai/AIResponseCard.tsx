@@ -16,6 +16,12 @@ const ACTION_CONFIG = {
   SUMMARIZE: { icon: <BookOpen size={16} />, label: "Summary", color: "#06b6d4" },
   CREATE_SPRINT: { icon: <Zap size={16} />, label: "Sprint Created", color: "#8b5cf6" },
   SCHEDULE_EVENT: { icon: <CheckCircle size={16} />, label: "Event Scheduled", color: "#10b981" },
+  UPDATE_TASK_STATUS: { icon: <CheckCircle size={16} />, label: "Task Status Updated", color: "#6366f1" },
+  UPDATE_TASK: { icon: <CheckCircle size={16} />, label: "Task Updated", color: "#6366f1" },
+  DELETE_TASK: { icon: <X size={16} />, label: "Task Deleted", color: "#ef4444" },
+  DELETE_TASKS: { icon: <X size={16} />, label: "Tasks Deleted", color: "#ef4444" },
+  MOVE_TASKS_TO_SPRINT: { icon: <Zap size={16} />, label: "Tasks Moved to Sprint", color: "#8b5cf6" },
+  COMPLETE_TASKS: { icon: <CheckCircle size={16} />, label: "Tasks Completed", color: "#10b981" },
   UNKNOWN: { icon: <BookOpen size={16} />, label: "Response", color: "#6b7280" },
 };
 
