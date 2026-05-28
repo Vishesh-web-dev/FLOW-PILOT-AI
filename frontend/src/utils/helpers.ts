@@ -1,8 +1,10 @@
 import { Priority, TaskStatus, ActivityType } from "../types";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
 
 export const getPriorityConfig = (priority: Priority) => {
   const config = {
@@ -105,16 +107,16 @@ export const formatRelativeTime = (date: string | Date): string => {
 };
 
 export const formatDate = (date: string | Date, format = "MMM D, YYYY"): string => {
-  return dayjs(date).format(format);
+  return dayjs(date).local().format(format);
 };
 
 export const formatDateTime = (date: string | Date): string => {
-  return dayjs(date).format("MMM D, YYYY [at] h:mm A");
+  return dayjs(date).local().format("MMM D, YYYY [at] h:mm A");
 };
 
 export const isOverdue = (dueDate: string | Date | null | undefined): boolean => {
   if (!dueDate) return false;
-  return dayjs(dueDate).isBefore(dayjs(), "day");
+  return dayjs(dueDate).local().isBefore(dayjs(), "day");
 };
 
 export const isDueSoon = (dueDate: string | Date | null | undefined): boolean => {
