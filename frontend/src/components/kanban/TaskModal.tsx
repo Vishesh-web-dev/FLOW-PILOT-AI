@@ -13,14 +13,13 @@ import {
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
-import { Task, TaskStatus, Priority } from "../../types";
+import { Task, TaskStatus, Priority, CreateTaskForm } from "../../types";
 import { tasksApi } from "../../api/tasks.api";
 import { projectsApi } from "../../api/projects.api";
 import { sprintsApi } from "../../api/sprints.api";
 import {
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
-  PROJECT_COLORS,
 } from "../../utils/helpers";
 
 const { TextArea } = Input;
@@ -102,15 +101,24 @@ export default function TaskModal({
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) => {
-      // Convert null description to undefined for compatibility with CreateTaskForm
-      const fixedData = {
-        ...data,
-        description: data.description === null ? undefined : data.description,
+      // Convert null fields to undefined for compatibility with CreateTaskForm
+      const fixedData: Partial<CreateTaskForm> & { position?: number } = {
+        title: data.title,
+        description: data.description ?? undefined,
+        status: data.status,
+        priority: data.priority,
+        dueDate: data.dueDate ?? undefined,
+        labels: data.labels,
+        estimatedHours: data.estimatedHours ?? undefined,
+        projectId: data.projectId ?? undefined,
+        sprintId: data.sprintId ?? undefined,
+        position: data.position,
       };
       return tasksApi.update(id, fixedData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });
       toast.success("Task updated!");
       onClose();
