@@ -1,16 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
+import HighchartsReact from "highcharts-react-official";
+import Highcharts from "highcharts";
 import { tasksApi } from "../../api/tasks.api";
 import { TaskStats } from "../../types";
 
@@ -35,32 +25,26 @@ const PRIORITY_COLORS: Record<string, string> = {
   URGENT: "#dc2626",
 };
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number; name: string; color: string }>;
-  label?: string;
-}
-
-const CustomBarTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div
-        style={{
-          background: "#1c1c28",
-          border: "1px solid #2a2a3a",
-          borderRadius: 8,
-          padding: "8px 12px",
-          fontSize: 12,
-          color: "#e2e8f0",
-        }}
-      >
-        <p style={{ fontWeight: 600, marginBottom: 4 }}>{label}</p>
-        <p style={{ color: payload[0].color }}>Count: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
+// Apply global dark theme defaults once
+Highcharts.setOptions({
+  chart: {
+    backgroundColor: "transparent",
+    style: { fontFamily: "inherit" },
+  },
+  credits: { enabled: false },
+  title: { text: undefined },
+  legend: {
+    itemStyle: { color: "#94a3b8", fontSize: "11px", fontWeight: "normal" },
+    itemHoverStyle: { color: "#e2e8f0" },
+  },
+  tooltip: {
+    backgroundColor: "#1c1c28",
+    borderColor: "#2a2a3a",
+    borderRadius: 8,
+    style: { color: "#e2e8f0", fontSize: "12px" },
+    shadow: false,
+  },
+});
 
 interface TaskChartProps {
   type?: "status" | "priority";
@@ -82,7 +66,7 @@ export default function TaskChart({
     return (
       <div
         className="animate-shimmer"
-        style={{ height: 200, borderRadius: 8 }}
+        style={{ height: 220, borderRadius: 8 }}
       />
     );
   }
@@ -93,73 +77,116 @@ export default function TaskChart({
     type === "status"
       ? stats.byStatus.map((item) => ({
           name: STATUS_LABELS[item.status] || item.status,
-          value: item._count,
+          y: item._count,
           color: STATUS_COLORS[item.status] || "#6b7280",
         }))
       : stats.byPriority.map((item) => ({
           name: item.priority,
-          value: item._count,
+          y: item._count,
           color: PRIORITY_COLORS[item.priority] || "#6b7280",
         }));
 
-  if (chartType === "pie") {
-    return (
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            outerRadius={70}
-            innerRadius={40}
-            dataKey="value"
-            paddingAngle={3}
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={index} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              background: "#1c1c28",
-              border: "1px solid #2a2a3a",
-              borderRadius: 8,
-              color: "#e2e8f0",
-              fontSize: 12,
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
-            iconType="circle"
-            iconSize={8}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    );
+  // ── Bar Chart ────────────────────────────────────────────────
+  if (chartType === "bar") {
+    const barOptions: Highcharts.Options = {
+      chart: {
+        type: "column",
+        height: 220,
+        animation: { duration: 600 },
+        marginTop: 10,
+      },
+      xAxis: {
+        categories: chartData.map((d) => d.name),
+        labels: { style: { color: "#64748b", fontSize: "11px" } },
+        lineColor: "#1e1e2a",
+        tickColor: "#1e1e2a",
+        crosshair: { color: "rgba(99,102,241,0.08)" },
+      },
+      yAxis: {
+        allowDecimals: false,
+        title: { text: undefined },
+        gridLineDashStyle: "Dash",
+        gridLineColor: "#1e1e2a",
+        labels: { style: { color: "#64748b", fontSize: "11px" } },
+      },
+      plotOptions: {
+        column: {
+          borderRadius: 6,
+          pointPadding: 0.15,
+          groupPadding: 0.1,
+          dataLabels: {
+            enabled: true,
+            style: {
+              color: "#94a3b8",
+              fontSize: "11px",
+              fontWeight: "normal",
+              textOutline: "none",
+            },
+            formatter() {
+              return (this.y ?? 0) > 0 ? String(this.y) : "";
+            },
+          },
+        },
+      },
+      series: [
+        {
+          type: "column",
+          name: type === "status" ? "Tasks by Status" : "Tasks by Priority",
+          data: chartData,
+          showInLegend: false,
+        },
+      ],
+      tooltip: {
+        formatter() {
+          return `<b>${this.x}</b><br/>Tasks: <b>${this.y}</b>`;
+        },
+      },
+    };
+
+    return <HighchartsReact highcharts={Highcharts} options={barOptions} />;
   }
 
-  return (
-    <ResponsiveContainer width="100%" height={200}>
-      <BarChart data={chartData} barSize={32}>
-        <XAxis
-          dataKey="name"
-          tick={{ fill: "#64748b", fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: "#64748b", fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-          width={25}
-        />
-        <Tooltip content={<CustomBarTooltip />} />
-        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-          {chartData.map((entry, index) => (
-            <Cell key={index} fill={entry.color} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
+  // ── Donut Chart ───────────────────────────────────────────────
+  const pieOptions: Highcharts.Options = {
+    chart: {
+      type: "pie",
+      height: 220,
+      animation: { duration: 600 },
+    },
+    plotOptions: {
+      pie: {
+        innerSize: "55%",
+        borderWidth: 2,
+        borderColor: "#12121a",
+        dataLabels: { enabled: false },
+        showInLegend: true,
+        states: { hover: { brightness: 0.1 } },
+      },
+    },
+    legend: {
+      align: "right",
+      verticalAlign: "middle",
+      layout: "vertical",
+      itemStyle: { color: "#94a3b8", fontSize: "11px", fontWeight: "normal" },
+      itemHoverStyle: { color: "#e2e8f0" },
+      symbolRadius: 50,
+      symbolWidth: 8,
+      symbolHeight: 8,
+    },
+    series: [
+      {
+        type: "pie",
+        name: type === "status" ? "Tasks by Status" : "Tasks by Priority",
+        data: chartData,
+      },
+    ],
+    tooltip: {
+      formatter() {
+        const pt = (this as unknown as { point: Highcharts.Point & { name: string } }).point;
+        return `<b>${pt.name}</b><br/>Tasks: <b>${this.y}</b><br/>${this.percentage?.toFixed(1)}%`;
+      },
+    },
+  };
+
+  return <HighchartsReact highcharts={Highcharts} options={pieOptions} />;
 }
