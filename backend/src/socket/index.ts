@@ -3,6 +3,7 @@ import { Server, Socket } from "socket.io";
 import { verifyToken } from "../utils/jwt";
 import { logger } from "../utils/logger";
 import { env } from "../config/env";
+import { prisma } from "../config/database";
 
 let io: Server | null = null;
 
@@ -41,14 +42,29 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
     }
   });
 
-  io.on("connection", (socket: Socket) => {
+  io.on("connection", async (socket: Socket) => {
     const userId = (socket as any).userId as string;
     logger.info(`Socket connected: ${socket.id} | User: ${userId}`);
 
     // Join user-specific room for private events
     socket.join(`user:${userId}`);
 
-    // Handle joining project rooms
+    // Auto-join ALL project rooms this user is a member of
+    // so real-time events work regardless of which page they're on
+    try {
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      for (const { projectId } of memberships) {
+        socket.join(`project:${projectId}`);
+      }
+      logger.debug(`User ${userId} auto-joined ${memberships.length} project rooms`);
+    } catch (err) {
+      logger.error(`Failed to auto-join project rooms for user ${userId}:`, err);
+    }
+
+    // Handle joining project rooms (for when user joins a new project dynamically)
     socket.on("join:project", (projectId: string) => {
       socket.join(`project:${projectId}`);
       logger.debug(`User ${userId} joined project room: ${projectId}`);
