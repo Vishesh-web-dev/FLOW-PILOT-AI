@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -20,6 +20,7 @@ import { KANBAN_COLUMNS } from "../../utils/helpers";
 import KanbanColumnComponent from "./KanbanColumn";
 import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
+import { getSocket } from "../../hooks/useSocket";
 
 interface KanbanBoardProps {
   projectId?: string;
@@ -44,6 +45,35 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
   });
 
   const tasks: Task[] = data?.data?.data || [];
+
+  // ── Join / leave project socket room ──────────────────────────────────────
+  useEffect(() => {
+    if (!projectId) return;
+    const sock = getSocket();
+    if (!sock) return;
+
+    sock.emit("join:project", projectId);
+
+    // Real-time: invalidate tasks query when anyone changes something
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", { projectId, sprintId }] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+    };
+
+    sock.on("task:created", invalidate);
+    sock.on("task:updated", invalidate);
+    sock.on("task:deleted", invalidate);
+    sock.on("tasks:reordered", invalidate);
+
+    return () => {
+      sock.emit("leave:project", projectId);
+      sock.off("task:created", invalidate);
+      sock.off("task:updated", invalidate);
+      sock.off("task:deleted", invalidate);
+      sock.off("tasks:reordered", invalidate);
+    };
+  }, [projectId, sprintId, queryClient]);
 
   const reorderMutation = useMutation({
     mutationFn: tasksApi.reorder,

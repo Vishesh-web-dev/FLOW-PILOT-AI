@@ -89,7 +89,7 @@ export const useSocket = () => {
         "DELETE_TASK", "DELETE_TASKS", "MOVE_TASKS_TO_SPRINT",
       ];
       if (taskActions.includes(type)) {
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        queryClient.invalidateQueries({ queryKey: ["tasks"] });  // prefix match covers all filter variants
         queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       }
 
@@ -108,20 +108,16 @@ export const useSocket = () => {
     });
 
     // ── task:created / updated / deleted from project rooms ─────────────────
-    socketRef.current.on("task:created", () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    // Must invalidate ALL task query variants (with and without project/sprint filters)
+    const invalidateTasks = () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });      // covers ["tasks", { projectId }] too (prefix match)
       queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-    });
+    };
 
-    socketRef.current.on("task:updated", () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-    });
-
-    socketRef.current.on("task:deleted", () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-    });
+    socketRef.current.on("task:created", invalidateTasks);
+    socketRef.current.on("task:updated", invalidateTasks);
+    socketRef.current.on("task:deleted", invalidateTasks);
+    socketRef.current.on("tasks:reordered", invalidateTasks);
 
     // ── task:assigned_to_you ─────────────────────────────────────────────────
     socketRef.current.on("task:assigned_to_you", (task) => {
@@ -192,6 +188,15 @@ export const useSocket = () => {
         style: { background: "#16161d", border: "1px solid #ef4444", color: "#fff" },
       });
     });
+
+    // ── sprint:created / updated / deleted ───────────────────────────────────
+    const invalidateSprints = () => {
+      queryClient.invalidateQueries({ queryKey: ["sprints"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    };
+    socketRef.current.on("sprint:created", invalidateSprints);
+    socketRef.current.on("sprint:updated", invalidateSprints);
+    socketRef.current.on("sprint:deleted", invalidateSprints);
 
     return () => {
       socketRef.current?.disconnect();

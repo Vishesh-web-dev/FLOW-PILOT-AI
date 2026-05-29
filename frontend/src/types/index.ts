@@ -275,6 +275,7 @@ export interface SocketEvents {
   "tasks:reordered": Array<{ id: string; status: TaskStatus; position: number }>;
   "sprint:created": Sprint;
   "sprint:updated": Sprint;
+  "sprint:deleted": { id: string; projectId?: string };
   "ai:action_executed": { command: string; result: AIActionResult; executed: Record<string, unknown> };
   "reminder:due": Pick<Reminder, "id" | "title" | "description" | "remindAt">;
   "project:updated": Project;

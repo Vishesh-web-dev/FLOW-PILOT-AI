@@ -1,9 +1,13 @@
 import KanbanBoard from "../components/kanban/KanbanBoard";
 import AICommandInput from "../components/ai/AICommandInput";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get("project") ?? undefined;
+  const sprintId = searchParams.get("sprint") ?? undefined;
 
   return (
     <div className="animate-fade-in-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -31,11 +35,13 @@ export default function KanbanPage() {
       {/* AI Input */}
       <AICommandInput
         onCommandExecuted={() => queryClient.invalidateQueries({ queryKey: ["tasks"] })}
+        projectId={projectId}
+        sprintId={sprintId}
         compact
       />
 
       {/* Kanban Board */}
-      <KanbanBoard />
+      <KanbanBoard projectId={projectId} sprintId={sprintId} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
 import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
-import { emitToProject } from "../socket";
+import { emitToProject, emitToUser } from "../socket";
 
 // Shared task include — keeps all queries consistent
 const taskInclude = {
@@ -160,9 +160,11 @@ export const taskController = {
         include: taskInclude,
       });
 
-      // Real-time: notify all project members
+      // Real-time: notify project members OR the task creator directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:created", task);
+      } else {
+        emitToUser(userId, "task:created", task);
       }
 
       await activityService.log({
@@ -219,14 +221,14 @@ export const taskController = {
         include: taskInclude,
       });
 
-      // Real-time: notify all project members
+      // Real-time: notify project members OR the task creator directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:updated", task);
+      } else {
+        emitToUser(existingTask.userId, "task:updated", task);
       }
       // Also notify assignee if changed
       if (data.assigneeId && data.assigneeId !== existingTask.assigneeId) {
-        // emitToUser is imported via socket — notify new assignee
-        const { emitToUser } = await import("../socket");
         emitToUser(data.assigneeId, "task:assigned_to_you", task);
       }
 
@@ -299,9 +301,11 @@ export const taskController = {
 
       await prisma.task.delete({ where: { id } });
 
-      // Real-time: notify project members
+      // Real-time: notify project members OR the task creator directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:deleted", { id, projectId: task.projectId });
+      } else {
+        emitToUser(task.userId, "task:deleted", { id });
       }
 
       await activityService.log({

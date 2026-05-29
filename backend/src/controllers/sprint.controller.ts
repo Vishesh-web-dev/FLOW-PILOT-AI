@@ -10,6 +10,7 @@ import {
 import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
+import { emitToUser, emitToProject } from "../socket";
 
 export const createSprintSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -117,6 +118,13 @@ export const sprintController = {
         metadata: { sprintId: sprint.id },
       });
 
+      // Real-time
+      if (sprint.projectId) {
+        emitToProject(sprint.projectId, "sprint:created", sprint);
+      } else {
+        emitToUser(userId, "sprint:created", sprint);
+      }
+
       sendCreated(res, sprint, "Sprint created");
     } catch (error) {
       logger.error("CreateSprint error:", error);
@@ -156,6 +164,13 @@ export const sprintController = {
         description: `Updated sprint: "${sprint.name}"`,
       });
 
+      // Real-time
+      if (sprint.projectId) {
+        emitToProject(sprint.projectId, "sprint:updated", sprint);
+      } else {
+        emitToUser(userId, "sprint:updated", sprint);
+      }
+
       sendSuccess(res, sprint, "Sprint updated");
     } catch (error) {
       logger.error("UpdateSprint error:", error);
@@ -182,6 +197,14 @@ export const sprintController = {
       });
 
       await prisma.sprint.delete({ where: { id } });
+
+      // Real-time
+      if (sprint.projectId) {
+        emitToProject(sprint.projectId, "sprint:deleted", { id });
+      } else {
+        emitToUser(userId, "sprint:deleted", { id });
+      }
+
       sendSuccess(res, { id }, "Sprint deleted");
     } catch (error) {
       logger.error("DeleteSprint error:", error);
