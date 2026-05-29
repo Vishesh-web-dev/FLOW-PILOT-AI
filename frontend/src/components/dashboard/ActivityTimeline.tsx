@@ -141,6 +141,22 @@ export default function ActivityTimeline({
                 }}
               >
                 <span>{formatRelativeTime(activity.createdAt)}</span>
+                {activity.project && (
+                  <>
+                    <span style={{ color: "#2a2a3a" }}>·</span>
+                    <span
+                      style={{
+                        color: "#22c55e",
+                        fontSize: 11,
+                        background: "rgba(34,197,94,0.1)",
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      📁 {activity.project.name}
+                    </span>
+                  </>
+                )}
                 {activity.task && (
                   <>
                     <span style={{ color: "#2a2a3a" }}>·</span>

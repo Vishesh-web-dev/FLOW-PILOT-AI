@@ -42,6 +42,11 @@ export const useSocket = () => {
       console.error("Socket connection error:", error.message);
     });
 
+    // ── activity:new — project or personal activity logged server-side ───────
+    socketRef.current.on("activity:new", () => {
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
+    });
+
     // ── reminder:due ─────────────────────────────────────────────────────────
     // Server-push from cron job — user has no way to know without this.
     socketRef.current.on("reminder:due", (reminder) => {

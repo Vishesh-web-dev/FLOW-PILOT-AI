@@ -4,7 +4,6 @@ import { sendSuccess, sendError } from "../utils/response";
 import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
-
 export const activityController = {
   // GET /api/activities
   async getActivities(req: AuthRequest, res: Response): Promise<void> {
@@ -15,19 +14,8 @@ export const activityController = {
       const skip = (page - 1) * limit;
 
       const [activities, total] = await Promise.all([
-        prisma.activity.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-          take: limit,
-          skip,
-          include: {
-            task: {
-              select: { id: true, title: true, status: true, priority: true },
-            },
-            user: { select: { id: true, name: true, avatar: true } },
-          },
-        }),
-        prisma.activity.count({ where: { userId } }),
+        activityService.getForUser(userId, limit, skip),
+        activityService.countForUser(userId),
       ]);
 
       sendSuccess(res, activities, "Activities retrieved", 200, {

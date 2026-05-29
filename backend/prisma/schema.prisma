@@ -47,6 +47,7 @@ model Project {
   sprints Sprint[]
   members ProjectMember[]
   invites ProjectInvite[]
+  activities Activity[]
 
   @@map("projects")
 }
@@ -155,11 +156,15 @@ model Activity {
   metadata    Json?
   createdAt   DateTime     @default(now())
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId String?
-  task   Task?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  @@index([projectId])
+  @@index([userId])
   @@map("activities")
 }
 

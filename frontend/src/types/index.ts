@@ -145,7 +145,9 @@ export interface Activity {
   createdAt: string;
   userId: string;
   taskId?: string | null;
+  projectId?: string | null;
   task?: Pick<Task, "id" | "title" | "status" | "priority"> | null;
+  project?: { id: string; name: string } | null;
   user: Pick<User, "id" | "name" | "avatar">;
 }
 
@@ -268,6 +270,7 @@ export interface CreateSprintForm {
 
 // Socket event types
 export interface SocketEvents {
+  "activity:new": Activity;
   "task:created": Task;
   "task:updated": Task;
   "task:deleted": { id: string; projectId?: string };
