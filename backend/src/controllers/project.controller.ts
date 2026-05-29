@@ -6,10 +6,12 @@ import {
   sendCreated,
   sendError,
   sendNotFound,
+  sendForbidden,
 } from "../utils/response";
 import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
+import { emitToProject } from "../socket";
 
 export const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -18,20 +20,33 @@ export const createProjectSchema = z.object({
 });
 
 export const projectController = {
-  // GET /api/projects
+  // GET /api/projects — returns all projects user owns OR is a member of
   async getAllProjects(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
 
-      const projects = await prisma.project.findMany({
+      const memberships = await prisma.projectMember.findMany({
         where: { userId },
-        orderBy: { createdAt: "desc" },
         include: {
-          _count: {
-            select: { tasks: true, sprints: true },
+          project: {
+            include: {
+              _count: { select: { tasks: true, sprints: true, members: true } },
+              members: {
+                include: {
+                  user: { select: { id: true, name: true, avatar: true } },
+                },
+                take: 5,
+              },
+            },
           },
         },
+        orderBy: { joinedAt: "desc" },
       });
+
+      const projects = memberships.map((m) => ({
+        ...m.project,
+        myRole: m.role,
+      }));
 
       sendSuccess(res, projects, "Projects retrieved");
     } catch (error) {
@@ -46,8 +61,14 @@ export const projectController = {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const project = await prisma.project.findFirst({
-        where: { id, userId },
+      // Must be a member
+      const membership = await prisma.projectMember.findUnique({
+        where: { userId_projectId: { userId, projectId: id } },
+      });
+      if (!membership) { sendForbidden(res, "You are not a member of this project"); return; }
+
+      const project = await prisma.project.findUnique({
+        where: { id },
         include: {
           tasks: {
             where: { parentId: null },
@@ -55,22 +76,23 @@ export const projectController = {
             include: {
               subtasks: { select: { id: true, title: true, status: true } },
               _count: { select: { subtasks: true } },
+              assignee: { select: { id: true, name: true, avatar: true } },
             },
           },
           sprints: {
             orderBy: { createdAt: "desc" },
             include: { _count: { select: { tasks: true } } },
           },
-          _count: { select: { tasks: true, sprints: true } },
+          members: {
+            include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
+          },
+          _count: { select: { tasks: true, sprints: true, members: true } },
         },
       });
 
-      if (!project) {
-        sendNotFound(res, "Project not found");
-        return;
-      }
+      if (!project) { sendNotFound(res, "Project not found"); return; }
 
-      sendSuccess(res, project, "Project retrieved");
+      sendSuccess(res, { ...project, myRole: membership.role }, "Project retrieved");
     } catch (error) {
       logger.error("GetProjectById error:", error);
       sendError(res, "Failed to get project");
@@ -84,8 +106,19 @@ export const projectController = {
       const data = req.body;
 
       const project = await prisma.project.create({
-        data: { ...data, userId },
-        include: { _count: { select: { tasks: true, sprints: true } } },
+        data: {
+          ...data,
+          userId,
+          members: {
+            create: { userId, role: "OWNER" }, // creator is OWNER
+          },
+        },
+        include: {
+          _count: { select: { tasks: true, sprints: true, members: true } },
+          members: {
+            include: { user: { select: { id: true, name: true, avatar: true } } },
+          },
+        },
       });
 
       await activityService.log({
@@ -95,31 +128,39 @@ export const projectController = {
         metadata: { projectId: project.id },
       });
 
-      sendCreated(res, project, "Project created");
+      sendCreated(res, { ...project, myRole: "OWNER" }, "Project created");
     } catch (error) {
       logger.error("CreateProject error:", error);
       sendError(res, "Failed to create project");
     }
   },
 
-  // PUT /api/projects/:id
+  // PUT /api/projects/:id — only OWNER or ADMIN
   async updateProject(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const existing = await prisma.project.findFirst({ where: { id, userId } });
-      if (!existing) {
-        sendNotFound(res, "Project not found");
+      const membership = await prisma.projectMember.findUnique({
+        where: { userId_projectId: { userId, projectId: id } },
+      });
+      if (!membership || (membership.role !== "OWNER" && membership.role !== "ADMIN")) {
+        sendForbidden(res, "Only owners and admins can update this project");
         return;
       }
 
       const project = await prisma.project.update({
         where: { id },
         data: req.body,
-        include: { _count: { select: { tasks: true, sprints: true } } },
+        include: {
+          _count: { select: { tasks: true, sprints: true, members: true } },
+          members: {
+            include: { user: { select: { id: true, name: true, avatar: true } } },
+          },
+        },
       });
 
+      emitToProject(id, "project:updated", project);
       sendSuccess(res, project, "Project updated");
     } catch (error) {
       logger.error("UpdateProject error:", error);
@@ -127,18 +168,21 @@ export const projectController = {
     }
   },
 
-  // DELETE /api/projects/:id
+  // DELETE /api/projects/:id — only OWNER
   async deleteProject(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const project = await prisma.project.findFirst({ where: { id, userId } });
-      if (!project) {
-        sendNotFound(res, "Project not found");
+      const membership = await prisma.projectMember.findUnique({
+        where: { userId_projectId: { userId, projectId: id } },
+      });
+      if (!membership || membership.role !== "OWNER") {
+        sendForbidden(res, "Only the project owner can delete this project");
         return;
       }
 
+      emitToProject(id, "project:deleted", { id });
       await prisma.project.delete({ where: { id } });
       sendSuccess(res, { id }, "Project deleted");
     } catch (error) {

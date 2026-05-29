@@ -19,12 +19,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks      Task[]
-  projects   Project[]
-  sprints    Sprint[]
-  activities Activity[]
-  reminders  Reminder[]
-  aiCommands AICommand[]
+  tasks          Task[]
+  assignedTasks  Task[]           @relation("TaskAssignee")
+  projects       Project[]
+  projectMembers ProjectMember[]
+  sprints        Sprint[]
+  activities     Activity[]
+  reminders      Reminder[]
+  aiCommands     AICommand[]
+  sentInvites    ProjectInvite[]  @relation("InviteSender")
+  receivedInvites ProjectInvite[] @relation("InviteReceiver")
 
   @@map("users")
 }
@@ -38,11 +42,46 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   userId  String
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks   Task[]
   sprints Sprint[]
+  members ProjectMember[]
+  invites ProjectInvite[]
 
   @@map("projects")
+}
+
+model ProjectMember {
+  id        String            @id @default(uuid())
+  role      ProjectRole       @default(MEMBER)
+  joinedAt  DateTime          @default(now())
+
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("project_members")
+}
+
+model ProjectInvite {
+  id        String        @id @default(uuid())
+  email     String
+  role      ProjectRole   @default(MEMBER)
+  status    InviteStatus  @default(PENDING)
+  token     String        @unique @default(uuid())
+  expiresAt DateTime
+  createdAt DateTime      @default(now())
+
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User    @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  inviteeId   String?
+  invitee     User?   @relation("InviteReceiver", fields: [inviteeId], references: [id], onDelete: SetNull)
+
+  @@map("project_invites")
 }
 
 model Task {
@@ -58,15 +97,17 @@ model Task {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  sprintId  String?
-  sprint    Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  parentId  String?
-  parent    Task?    @relation("SubTasks", fields: [parentId], references: [id])
-  subtasks  Task[]   @relation("SubTasks")
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assigneeId String?
+  assignee   User?    @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sprintId   String?
+  sprint     Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  parentId   String?
+  parent     Task?    @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks   Task[]   @relation("SubTasks")
 
   activities Activity[]
 
@@ -156,6 +197,20 @@ enum SprintStatus {
   COMPLETED
 }
 
+enum ProjectRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
 enum ActivityType {
   TASK_CREATED
   TASK_UPDATED
@@ -167,4 +222,8 @@ enum ActivityType {
   REMINDER_SET
   PROJECT_CREATED
   USER_REGISTERED
+  MEMBER_INVITED
+  MEMBER_JOINED
+  MEMBER_REMOVED
+  MEMBER_ROLE_CHANGED
 }

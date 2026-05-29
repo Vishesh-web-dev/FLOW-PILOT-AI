@@ -11,6 +11,16 @@ import {
 import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
+import { emitToProject } from "../socket";
+
+// Shared task include — keeps all queries consistent
+const taskInclude = {
+  project: { select: { id: true, name: true, color: true } },
+  sprint: { select: { id: true, name: true } },
+  assignee: { select: { id: true, name: true, avatar: true } },
+  subtasks: { select: { id: true, title: true, status: true, priority: true } },
+  _count: { select: { subtasks: true } },
+} as const;
 
 
 // Zod Schemas
@@ -25,6 +35,7 @@ export const createTaskSchema = z.object({
   projectId: z.string().uuid().optional(),
   sprintId: z.string().uuid().optional(),
   parentId: z.string().uuid().optional(),
+  assigneeId: z.string().uuid().optional().nullable(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({
@@ -38,10 +49,21 @@ export const taskController = {
       const userId = req.user!.id;
       const { status, priority, projectId, sprintId, search } = req.query as Record<string, string>;
 
+      // Get project IDs the user is a member of
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
       const tasks = await prisma.task.findMany({
         where: {
-          userId,
-          parentId: null, // Only top-level tasks
+          parentId: null,
+          OR: [
+            { userId },                          // tasks the user created
+            { assigneeId: userId },              // tasks assigned to the user
+            { projectId: { in: memberProjectIds } }, // tasks in projects user belongs to
+          ],
           ...(status && { status: status as any }),
           ...(priority && { priority: priority as any }),
           ...(projectId && { projectId }),
@@ -54,19 +76,7 @@ export const taskController = {
           }),
         },
         orderBy: [{ position: "asc" }, { createdAt: "desc" }],
-        include: {
-          project: { select: { id: true, name: true, color: true } },
-          sprint: { select: { id: true, name: true } },
-          subtasks: {
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              priority: true,
-            },
-          },
-          _count: { select: { subtasks: true } },
-        },
+        include: taskInclude,
       });
 
       sendSuccess(res, tasks, "Tasks retrieved successfully");
@@ -132,14 +142,14 @@ export const taskController = {
           position: (maxPositionTask?.position ?? -1) + 1,
           dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         },
-        include: {
-          project: { select: { id: true, name: true, color: true } },
-          sprint: { select: { id: true, name: true } },
-          subtasks: true,
-        },
+        include: taskInclude,
       });
 
-      // Log activity
+      // Real-time: notify all project members
+      if (task.projectId) {
+        emitToProject(task.projectId, "task:created", task);
+      }
+
       await activityService.log({
         userId,
         type: "TASK_CREATED",
@@ -174,14 +184,21 @@ export const taskController = {
           ...data,
           dueDate: data.dueDate ? new Date(data.dueDate) : existingTask.dueDate,
         },
-        include: {
-          project: { select: { id: true, name: true, color: true } },
-          sprint: { select: { id: true, name: true } },
-          subtasks: true,
-        },
+        include: taskInclude,
       });
 
-      // Log activity - detect what changed
+      // Real-time: notify all project members
+      if (task.projectId) {
+        emitToProject(task.projectId, "task:updated", task);
+      }
+      // Also notify assignee if changed
+      if (data.assigneeId && data.assigneeId !== existingTask.assigneeId) {
+        // emitToUser is imported via socket — notify new assignee
+        const { emitToUser } = await import("../socket");
+        emitToUser(data.assigneeId, "task:assigned_to_you", task);
+      }
+
+      // Log activity
       const changedFields: string[] = [];
       if (data.status && data.status !== existingTask.status) {
         changedFields.push(`status: ${existingTask.status} → ${data.status}`);
@@ -222,6 +239,11 @@ export const taskController = {
       }
 
       await prisma.task.delete({ where: { id } });
+
+      // Real-time: notify project members
+      if (task.projectId) {
+        emitToProject(task.projectId, "task:deleted", { id, projectId: task.projectId });
+      }
 
       await activityService.log({
         userId,

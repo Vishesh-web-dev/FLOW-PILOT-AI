@@ -9,11 +9,17 @@ let io: Server | null = null;
 export const initializeSocket = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL,
+      origin: [
+        "https://flow-pilot-ai-phi.vercel.app",
+        env.FRONTEND_URL,
+        "http://localhost:5173",
+      ].filter(Boolean),
       methods: ["GET", "POST"],
       credentials: true,
     },
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"],
+    pingTimeout: 60000,
+    pingInterval: 25000,
   });
 
   // Authentication middleware for socket

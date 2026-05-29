@@ -2,6 +2,8 @@
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type SprintStatus = "PLANNING" | "ACTIVE" | "COMPLETED";
+export type ProjectRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+export type InviteStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
 export type ActivityType =
   | "TASK_CREATED"
   | "TASK_UPDATED"
@@ -12,7 +14,11 @@ export type ActivityType =
   | "AI_COMMAND"
   | "REMINDER_SET"
   | "PROJECT_CREATED"
-  | "USER_REGISTERED";
+  | "USER_REGISTERED"
+  | "MEMBER_INVITED"
+  | "MEMBER_JOINED"
+  | "MEMBER_REMOVED"
+  | "MEMBER_ROLE_CHANGED";
 
 export interface User {
   id: string;
@@ -28,6 +34,29 @@ export interface User {
   };
 }
 
+export interface ProjectMember {
+  id: string;
+  role: ProjectRole;
+  joinedAt: string;
+  userId: string;
+  projectId: string;
+  user: Pick<User, "id" | "name" | "email" | "avatar">;
+}
+
+export interface ProjectInvite {
+  id: string;
+  email: string;
+  role: ProjectRole;
+  status: InviteStatus;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+  projectId: string;
+  project?: Pick<Project, "id" | "name" | "color">;
+  invitedById: string;
+  invitedBy?: Pick<User, "id" | "name" | "avatar">;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -37,9 +66,12 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   userId: string;
+  myRole?: ProjectRole;
+  members?: ProjectMember[];
   _count?: {
     tasks: number;
     sprints: number;
+    members: number;
   };
 }
 
@@ -56,6 +88,8 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   userId: string;
+  assigneeId?: string | null;
+  assignee?: Pick<User, "id" | "name" | "avatar"> | null;
   projectId?: string | null;
   project?: Pick<Project, "id" | "name" | "color"> | null;
   sprintId?: string | null;
@@ -215,6 +249,7 @@ export interface CreateTaskForm {
   estimatedHours?: number;
   projectId?: string;
   sprintId?: string;
+  assigneeId?: string | null;
 }
 
 export interface CreateProjectForm {
@@ -235,11 +270,19 @@ export interface CreateSprintForm {
 export interface SocketEvents {
   "task:created": Task;
   "task:updated": Task;
-  "task:deleted": { id: string };
+  "task:deleted": { id: string; projectId?: string };
+  "task:assigned_to_you": Task;
   "tasks:reordered": Array<{ id: string; status: TaskStatus; position: number }>;
   "sprint:created": Sprint;
   "sprint:updated": Sprint;
   "ai:action_executed": { command: string; result: AIActionResult; executed: Record<string, unknown> };
   "reminder:due": Pick<Reminder, "id" | "title" | "description" | "remindAt">;
+  "project:updated": Project;
+  "project:deleted": { id: string };
+  "project:member_joined": { member: ProjectMember; projectId: string };
+  "project:member_removed": { memberId: string; userId: string; projectId: string };
+  "project:member_role_changed": { memberId: string; role: ProjectRole; projectId: string };
+  "project:invite_received": { invite: { id: string; token: string; projectName: string; role: ProjectRole; invitedBy: string } };
+  "project:removed_from_project": { projectId: string };
   pong: { timestamp: number };
 }

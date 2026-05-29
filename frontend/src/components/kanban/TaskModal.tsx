@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Modal,
   Form,
@@ -9,6 +9,7 @@ import {
   Button,
   Tag,
   Space,
+  Avatar,
 } from "antd";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
@@ -17,6 +18,7 @@ import { Task, TaskStatus, Priority, CreateTaskForm } from "../../types";
 import { tasksApi } from "../../api/tasks.api";
 import { projectsApi } from "../../api/projects.api";
 import { sprintsApi } from "../../api/sprints.api";
+import { teamApi } from "../../api/team.api";
 import {
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
@@ -45,6 +47,9 @@ export default function TaskModal({
   const queryClient = useQueryClient();
   const isEditing = !!task;
 
+  // Track selected projectId in form to fetch members
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(projectId || task?.projectId || undefined);
+
   const { data: projectsData } = useQuery({
     queryKey: ["projects"],
     queryFn: projectsApi.getAll,
@@ -57,8 +62,15 @@ export default function TaskModal({
     enabled: open,
   });
 
+  const { data: membersData } = useQuery({
+    queryKey: ["team-members", selectedProjectId],
+    queryFn: () => teamApi.getMembers(selectedProjectId!),
+    enabled: open && !!selectedProjectId,
+  });
+
   const projects = projectsData?.data?.data || [];
   const sprints = sprintsData?.data?.data || [];
+  const members = membersData?.data?.data || [];
 
   useEffect(() => {
     if (open) {
@@ -73,7 +85,9 @@ export default function TaskModal({
           estimatedHours: task.estimatedHours,
           projectId: task.projectId || projectId,
           sprintId: task.sprintId || sprintId,
+          assigneeId: task.assigneeId || undefined,
         });
+        setSelectedProjectId(task.projectId || projectId);
       } else {
         form.resetFields();
         form.setFieldsValue({
@@ -83,6 +97,7 @@ export default function TaskModal({
           sprintId,
           labels: [],
         });
+        setSelectedProjectId(projectId);
       }
     }
   }, [open, task, form, defaultStatus, projectId, sprintId]);
@@ -302,6 +317,10 @@ export default function TaskModal({
             <Select
               allowClear
               placeholder="Select project"
+              onChange={(val) => {
+                setSelectedProjectId(val);
+                form.setFieldValue("assigneeId", undefined);
+              }}
               options={projects.map((p) => ({
                 value: p.id,
                 label: (
@@ -336,6 +355,30 @@ export default function TaskModal({
             />
           </Form.Item>
         </div>
+
+        {/* Assignee — only shown when a project is selected */}
+        {selectedProjectId && members.length > 0 && (
+          <Form.Item
+            name="assigneeId"
+            label={<span style={{ color: "#94a3b8", fontSize: 13 }}>Assignee</span>}
+          >
+            <Select
+              allowClear
+              placeholder="Assign to a team member"
+              options={members.map((m) => ({
+                value: m.user.id,
+                label: (
+                  <Space>
+                    <Avatar size={18} src={m.user.avatar ?? undefined} style={{ background: "#6366f1", fontSize: 10 }}>
+                      {m.user.name[0].toUpperCase()}
+                    </Avatar>
+                    {m.user.name}
+                  </Space>
+                ),
+              }))}
+            />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );

@@ -6,6 +6,7 @@ import sprintRoutes from "./sprint.routes";
 import aiRoutes from "./ai.routes";
 import activityRoutes from "./activity.routes";
 import reminderRoutes from "./reminder.routes";
+import teamRoutes from "./team.routes";
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.get("/health", (req, res) => {
 router.use("/auth", authRoutes);
 router.use("/tasks", taskRoutes);
 router.use("/projects", projectRoutes);
+router.use("/projects", teamRoutes);   // team routes nested under /projects
 router.use("/sprints", sprintRoutes);
 router.use("/ai", aiRoutes);
 router.use("/activities", activityRoutes);

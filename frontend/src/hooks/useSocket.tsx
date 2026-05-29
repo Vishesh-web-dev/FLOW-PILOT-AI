@@ -107,6 +107,92 @@ export const useSocket = () => {
       }
     });
 
+    // ── task:created / updated / deleted from project rooms ─────────────────
+    socketRef.current.on("task:created", () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+    });
+
+    socketRef.current.on("task:updated", () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+    });
+
+    socketRef.current.on("task:deleted", () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+    });
+
+    // ── task:assigned_to_you ─────────────────────────────────────────────────
+    socketRef.current.on("task:assigned_to_you", (task) => {
+      toast.success(`📌 You were assigned to "${(task as { title: string }).title}"`, {
+        duration: 6000,
+        style: { background: "#16161d", border: "1px solid #6366f1", color: "#fff" },
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    });
+
+    // ── project:updated / deleted ────────────────────────────────────────────
+    socketRef.current.on("project:updated", () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    });
+
+    socketRef.current.on("project:deleted", () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    });
+
+    // ── project:member_joined ────────────────────────────────────────────────
+    socketRef.current.on("project:member_joined", (data) => {
+      const d = data as { member: { user: { name: string } }; projectId: string };
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId] });
+      toast.success(`👥 ${d.member.user.name} joined the project`, {
+        style: { background: "#16161d", border: "1px solid #22c55e", color: "#fff" },
+      });
+    });
+
+    // ── project:member_removed ───────────────────────────────────────────────
+    socketRef.current.on("project:member_removed", (data) => {
+      const d = data as { userId: string; projectId: string };
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId] });
+    });
+
+    // ── project:member_role_changed ──────────────────────────────────────────
+    socketRef.current.on("project:member_role_changed", (data) => {
+      const d = data as { projectId: string };
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    });
+
+    // ── project:invite_received ──────────────────────────────────────────────
+    socketRef.current.on("project:invite_received", (data) => {
+      const d = data as { invite: { projectName: string; invitedBy: string } };
+      toast(
+        () => (
+          <div>
+            <p style={{ fontWeight: 600, color: "#fff", marginBottom: 4 }}>📨 Project Invitation</p>
+            <p style={{ fontSize: 13, color: "#94a3b8" }}>
+              {d.invite.invitedBy} invited you to <strong>{d.invite.projectName}</strong>
+            </p>
+          </div>
+        ),
+        {
+          duration: 10000,
+          style: { background: "#16161d", border: "1px solid #6366f1", color: "#fff" },
+        }
+      );
+      queryClient.invalidateQueries({ queryKey: ["my-invites"] });
+    });
+
+    // ── project:removed_from_project ─────────────────────────────────────────
+    socketRef.current.on("project:removed_from_project", () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.error("You were removed from a project", {
+        style: { background: "#16161d", border: "1px solid #ef4444", color: "#fff" },
+      });
+    });
+
     return () => {
       socketRef.current?.disconnect();
       socket = null;

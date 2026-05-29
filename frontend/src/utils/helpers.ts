@@ -82,6 +82,10 @@ export const getActivityIcon = (type: ActivityType): string => {
     REMINDER_SET: "⏰",
     PROJECT_CREATED: "📁",
     USER_REGISTERED: "👋",
+    MEMBER_INVITED: "📨",
+    MEMBER_JOINED: "👥",
+    MEMBER_REMOVED: "🚪",
+    MEMBER_ROLE_CHANGED: "🔑",
   };
   return icons[type] || "📝";
 };
@@ -98,6 +102,10 @@ export const getActivityColor = (type: ActivityType): string => {
     REMINDER_SET: "#f59e0b",
     PROJECT_CREATED: "#10b981",
     USER_REGISTERED: "#06b6d4",
+    MEMBER_INVITED: "#6366f1",
+    MEMBER_JOINED: "#22c55e",
+    MEMBER_REMOVED: "#ef4444",
+    MEMBER_ROLE_CHANGED: "#f59e0b",
   };
   return colors[type] || "#6b7280";
 };
