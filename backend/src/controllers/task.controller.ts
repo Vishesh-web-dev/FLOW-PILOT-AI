@@ -160,11 +160,14 @@ export const taskController = {
         include: taskInclude,
       });
 
-      // Real-time: notify project members OR the task creator directly
+      // Real-time: notify project members OR the task creator + assignee directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:created", task);
       } else {
         emitToUser(userId, "task:created", task);
+        if (task.assigneeId && task.assigneeId !== userId) {
+          emitToUser(task.assigneeId, "task:created", task);
+        }
       }
 
       await activityService.log({
@@ -221,11 +224,14 @@ export const taskController = {
         include: taskInclude,
       });
 
-      // Real-time: notify project members OR the task creator directly
+      // Real-time: notify project members OR the task creator + assignee directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:updated", task);
       } else {
         emitToUser(existingTask.userId, "task:updated", task);
+        if (task.assigneeId && task.assigneeId !== existingTask.userId) {
+          emitToUser(task.assigneeId, "task:updated", task);
+        }
       }
       // Also notify assignee if changed
       if (data.assigneeId && data.assigneeId !== existingTask.assigneeId) {
@@ -301,11 +307,14 @@ export const taskController = {
 
       await prisma.task.delete({ where: { id } });
 
-      // Real-time: notify project members OR the task creator directly
+      // Real-time: notify project members OR the task creator + assignee directly
       if (task.projectId) {
         emitToProject(task.projectId, "task:deleted", { id, projectId: task.projectId });
       } else {
         emitToUser(task.userId, "task:deleted", { id });
+        if (task.assigneeId && task.assigneeId !== task.userId) {
+          emitToUser(task.assigneeId, "task:deleted", { id });
+        }
       }
 
       await activityService.log({
