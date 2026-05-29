@@ -6,7 +6,7 @@ import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { aiService } from "../services/ai.service";
 import { activityService } from "../services/activity.service";
-import { getSocketInstance } from "../socket";
+import { getSocketInstance, emitToProject } from "../socket";
 
 export const aiCommandSchema = z.object({
   command: z.string().min(1, "Command is required").max(1000),

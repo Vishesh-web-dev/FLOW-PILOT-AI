@@ -89,18 +89,23 @@ export interface AIActionResult {
     dueDate?: string;
     labels?: string[];
     estimatedHours?: number;
+    projectName?: string;   // AI returns name; backend resolves to projectId
+    assigneeName?: string;  // AI returns name; backend resolves to assigneeId
   }>;
   // For operations on existing tasks
   taskTitle?: string;
   taskTitles?: string[];
   newStatus?: string;
   sprintName?: string;
+  projectName?: string;   // top-level project context from AI
+  assigneeName?: string;  // top-level assignee context from AI
   updates?: {
     priority?: Priority;
     dueDate?: string;
     labels?: string[];
     estimatedHours?: number;
     description?: string;
+    assigneeName?: string;
   };
   reminder?: {
     title: string;

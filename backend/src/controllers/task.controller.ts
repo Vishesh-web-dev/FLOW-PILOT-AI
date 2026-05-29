@@ -92,11 +92,26 @@ export const taskController = {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // User can view task if they own it, are assigned to it, or are a member of its project
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
       const task = await prisma.task.findFirst({
-        where: { id, userId },
+        where: {
+          id,
+          OR: [
+            { userId },
+            { assigneeId: userId },
+            { projectId: { in: memberProjectIds } },
+          ],
+        },
         include: {
           project: { select: { id: true, name: true, color: true } },
           sprint: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true, avatar: true } },
           parent: { select: { id: true, title: true } },
           subtasks: {
             orderBy: { position: "asc" },
@@ -172,7 +187,24 @@ export const taskController = {
       const userId = req.user!.id;
       const data = req.body;
 
-      const existingTask = await prisma.task.findFirst({ where: { id, userId } });
+      // Get projects the user is a member of
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
+      // User can update task if they own it, are assigned to it, or are a project member
+      const existingTask = await prisma.task.findFirst({
+        where: {
+          id,
+          OR: [
+            { userId },
+            { assigneeId: userId },
+            { projectId: { in: memberProjectIds } },
+          ],
+        },
+      });
       if (!existingTask) {
         sendNotFound(res, "Task not found");
         return;
@@ -232,10 +264,37 @@ export const taskController = {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const task = await prisma.task.findFirst({ where: { id, userId } });
+      // Get projects the user is a member of
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
+      // Only owner or project ADMIN/OWNER can delete
+      const task = await prisma.task.findFirst({
+        where: {
+          id,
+          OR: [
+            { userId },                                   // task creator can always delete
+            { projectId: { in: memberProjectIds } },     // project members (role check below)
+          ],
+        },
+      });
       if (!task) {
         sendNotFound(res, "Task not found");
         return;
+      }
+
+      // If not the creator, only ADMIN/OWNER of the project can delete
+      if (task.userId !== userId && task.projectId) {
+        const membership = await prisma.projectMember.findUnique({
+          where: { userId_projectId: { userId, projectId: task.projectId } },
+        });
+        if (!membership || (membership.role !== "OWNER" && membership.role !== "ADMIN")) {
+          sendNotFound(res, "Task not found"); // intentionally vague
+          return;
+        }
       }
 
       await prisma.task.delete({ where: { id } });
@@ -271,15 +330,39 @@ export const taskController = {
         return;
       }
 
-      // Batch update in transaction
+      // Get projects user is a member of so they can reorder shared tasks
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
+      // Batch update — allow reorder if user owns OR is a project member
       await prisma.$transaction(
         tasks.map(({ id, status, position }) =>
           prisma.task.updateMany({
-            where: { id, userId },
+            where: {
+              id,
+              OR: [
+                { userId },
+                { projectId: { in: memberProjectIds } },
+              ],
+            },
             data: { status: status as any, position },
           })
         )
       );
+
+      // Emit reorder to all affected project rooms
+      const affectedProjectIds = new Set<string>();
+      const updatedTasks = await prisma.task.findMany({
+        where: { id: { in: tasks.map((t) => t.id) } },
+        select: { id: true, projectId: true, status: true, position: true },
+      });
+      updatedTasks.forEach((t) => { if (t.projectId) affectedProjectIds.add(t.projectId); });
+      affectedProjectIds.forEach((projectId) => {
+        emitToProject(projectId, "tasks:reordered", tasks);
+      });
 
       sendSuccess(res, { updated: tasks.length }, "Tasks reordered");
     } catch (error) {
@@ -293,31 +376,45 @@ export const taskController = {
     try {
       const userId = req.user!.id;
 
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId },
+        select: { projectId: true },
+      });
+      const memberProjectIds = memberships.map((m) => m.projectId);
+
+      const taskWhere = {
+        OR: [
+          { userId },
+          { assigneeId: userId },
+          { projectId: { in: memberProjectIds } },
+        ],
+      };
+
       const [total, byStatus, byPriority, dueSoon, completedThisWeek] = await Promise.all([
-        prisma.task.count({ where: { userId } }),
+        prisma.task.count({ where: taskWhere }),
         prisma.task.groupBy({
           by: ["status"],
-          where: { userId },
+          where: taskWhere,
           _count: true,
         }),
         prisma.task.groupBy({
           by: ["priority"],
-          where: { userId },
+          where: taskWhere,
           _count: true,
         }),
         prisma.task.count({
           where: {
-            userId,
+            ...taskWhere,
             dueDate: {
               gte: new Date(),
-              lte: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // next 3 days
+              lte: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
             },
             status: { not: "DONE" },
           },
         }),
         prisma.task.count({
           where: {
-            userId,
+            ...taskWhere,
             status: "DONE",
             updatedAt: {
               gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
