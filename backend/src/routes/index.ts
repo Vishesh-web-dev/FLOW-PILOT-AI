@@ -23,8 +23,8 @@ router.get("/health", (req, res) => {
 // API Routes
 router.use("/auth", authRoutes);
 router.use("/tasks", taskRoutes);
+router.use("/projects", teamRoutes);   // team routes FIRST — prevents /:id wildcard from swallowing /invites/pending etc.
 router.use("/projects", projectRoutes);
-router.use("/projects", teamRoutes);   // team routes nested under /projects
 router.use("/sprints", sprintRoutes);
 router.use("/ai", aiRoutes);
 router.use("/activities", activityRoutes);
