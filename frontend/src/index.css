@@ -71,6 +71,25 @@ body {
   border-color: #2a2a3a !important;
   color: #e2e8f0 !important;
 }
+/* Fix browser autofill white flash on password / email inputs */
+.ant-input:-webkit-autofill,
+.ant-input:-webkit-autofill:hover,
+.ant-input:-webkit-autofill:focus,
+.ant-input-affix-wrapper:-webkit-autofill,
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1c1c28 inset !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  caret-color: #e2e8f0 !important;
+  border-color: #2a2a3a !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* Password input inner input stays dark */
+.ant-input-affix-wrapper input {
+  background: transparent !important;
+  color: #e2e8f0 !important;
+}
 .ant-input:focus,
 .ant-input-affix-wrapper:focus,
 .ant-input-affix-wrapper-focused {
@@ -235,4 +254,147 @@ body {
   border: 1px solid #2a2a3a !important;
   border-radius: 8px !important;
   color: #e2e8f0 !important;
+}
+
+/* ───────────────────────────────────
+   Responsive — Mobile (< 768px)
+─────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Tighter page headings */
+  h1 { font-size: 20px !important; }
+  h2 { font-size: 17px !important; }
+
+  /* ── Auth pages (Login / Register) ── */
+  .auth-card {
+    padding: 20px 18px !important;
+    border-radius: 14px !important;
+  }
+  .auth-wrapper { padding: 12px !important; }
+
+  /* ── Dashboard ── */
+  .dashboard-greeting {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding: 16px !important;
+  }
+
+  /* Stats grid: 2 cols on mobile */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Dashboard two-column split → single column, NO overflow */
+  .dashboard-split {
+    grid-template-columns: 1fr !important;
+    min-width: 0 !important;
+  }
+
+  /* Left col children must not overflow viewport */
+  .dashboard-split > div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* AI command input: clamp width to viewport */
+  .ai-input-glow {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .ai-input-glow textarea {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Upcoming tasks card: no overflow */
+  .upcoming-tasks-card {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+  .upcoming-tasks-card .task-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Charts row: single column */
+  .charts-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Sprints ── */
+  .sprints-header { flex-wrap: wrap !important; }
+  .sprints-grid { grid-template-columns: 1fr !important; }
+  .sprint-card-actions { flex-wrap: wrap !important; gap: 6px !important; }
+
+  /* ── Projects ── */
+  .projects-grid { grid-template-columns: 1fr !important; }
+  .projects-stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* ── Reminders ── */
+  .reminders-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* ── Activity Timeline ── */
+  /* Stack the date below the content so it doesn't overlap the type tag */
+  .activity-card-header {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  .activity-card-date {
+    text-align: left !important;
+    flex-shrink: unset !important;
+    width: 100% !important;
+    color: #475569;
+    border-top: 1px solid #1e1e2a;
+    padding-top: 6px;
+    margin-top: 2px;
+  }
+
+  /* ── Ant Design full-screen modals ── */
+  .ant-modal {
+    max-width: 100vw !important;
+    width: 100vw !important;
+    margin: 0 !important;
+    top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  .ant-modal-content {
+    border-radius: 0 !important;
+    min-height: 100dvh !important;
+  }
+  .ant-modal-body { padding: 16px !important; }
+  .ant-form-item { margin-bottom: 14px !important; }
+  .ant-tabs-nav { overflow-x: auto !important; }
+  .ant-table-wrapper { overflow-x: auto; }
+  .ant-tag { margin-bottom: 4px; }
+  .ant-drawer-content-wrapper { width: 100vw !important; }
+
+  /* Prevent layout blowout — constrain block-level children only */
+  body { overflow-x: hidden; }
+
+  /* Hide cosmetic scrollbar */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+}
+
+/* ───────────────────────────────────
+   Responsive — Tablet (768px–1023px)
+─────────────────────────────────── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .dashboard-split { grid-template-columns: 1fr !important; }
+  .projects-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .sprints-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .charts-row { grid-template-columns: 1fr !important; }
 }

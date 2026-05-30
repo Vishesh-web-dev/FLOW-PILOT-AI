@@ -47,7 +47,7 @@ export const taskController = {
   async getAllTasks(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const { status, priority, projectId, sprintId, search } = req.query as Record<string, string>;
+      const { status, priority, projectId, sprintId, search, projectIds, sprintIds } = req.query as Record<string, string>;
 
       // Get project IDs the user is a member of
       const memberships = await prisma.projectMember.findMany({
@@ -55,6 +55,21 @@ export const taskController = {
         select: { projectId: true },
       });
       const memberProjectIds = memberships.map((m) => m.projectId);
+
+      // Multi-value filters: comma-separated lists take precedence over single values
+      const projectIdFilter = projectIds
+        ? projectIds.split(",").filter(Boolean)
+        : projectId
+        ? [projectId]
+        : null;
+
+      // sprintId="null" is a special value meaning "tasks with no sprint"
+      const noSprintOnly = sprintId === "null";
+      const sprintIdFilter = sprintIds
+        ? sprintIds.split(",").filter(Boolean)
+        : sprintId && !noSprintOnly
+        ? [sprintId]
+        : null;
 
       const tasks = await prisma.task.findMany({
         where: {
@@ -66,8 +81,8 @@ export const taskController = {
           ],
           ...(status && { status: status as any }),
           ...(priority && { priority: priority as any }),
-          ...(projectId && { projectId }),
-          ...(sprintId && { sprintId }),
+          ...(projectIdFilter && { projectId: { in: projectIdFilter } }),
+          ...(noSprintOnly ? { sprintId: null } : sprintIdFilter ? { sprintId: { in: sprintIdFilter } } : {}),
           ...(search && {
             OR: [
               { title: { contains: search, mode: "insensitive" } },

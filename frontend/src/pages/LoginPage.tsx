@@ -37,6 +37,7 @@ export default function LoginPage() {
 
   return (
     <div
+      className="auth-wrapper"
       style={{
         minHeight: "100vh",
         background: "#0f0f13",
@@ -111,6 +112,7 @@ export default function LoginPage() {
 
         {/* Login Card */}
         <div
+          className="auth-card"
           style={{
             background: "#16161d",
             border: "1px solid #1e1e2a",

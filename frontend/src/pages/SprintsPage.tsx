@@ -104,7 +104,7 @@ export default function SprintsPage() {
   return (
     <div className="animate-fade-in-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+      <div className="sprints-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div>
           <h1
             style={{
@@ -177,7 +177,7 @@ export default function SprintsPage() {
           </Button>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        <div className="sprints-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
           {sprints.map((sprint) => {
             const statusConf = STATUS_CONFIG[sprint.status];
             const totalTasks = sprint._count?.tasks || sprint.tasks?.length || 0;

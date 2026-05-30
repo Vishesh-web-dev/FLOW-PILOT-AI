@@ -284,7 +284,7 @@ export default function RemindersPage() {
   return (
     <div className="animate-fade-in-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="reminders-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1
             style={{
@@ -321,44 +321,46 @@ export default function RemindersPage() {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "flex", gap: 16 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {[
           { label: "Upcoming", count: upcoming.length, color: "#6366f1", icon: <Bell size={18} /> },
-  { label: "Overdue", count: upcoming.filter((r) => isOverdue(r.remindAt)).length, color: "#ef4444", icon: <AlertCircle size={18} /> },
+          { label: "Overdue", count: upcoming.filter((r) => isOverdue(r.remindAt)).length, color: "#ef4444", icon: <AlertCircle size={18} /> },
           { label: "Completed", count: completed.length, color: "#22c55e", icon: <CheckCircle size={18} /> },
         ].map((stat) => (
           <div
             key={stat.label}
             style={{
-              flex: 1,
+              flex: "1 1 120px",
+              minWidth: 0,
               background: "#16161d",
               border: "1px solid #1e1e2a",
               borderRadius: 12,
-              padding: 16,
+              padding: "12px 14px",
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: 10,
             }}
           >
             <div
               style={{
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 borderRadius: 10,
                 background: `${stat.color}15`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 color: stat.color,
+                flexShrink: 0,
               }}
             >
               {stat.icon}
             </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#e2e8f0", lineHeight: 1 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#e2e8f0", lineHeight: 1 }}>
                 {stat.count}
               </div>
-              <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{stat.label}</div>
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 2, whiteSpace: "nowrap" }}>{stat.label}</div>
             </div>
           </div>
         ))}

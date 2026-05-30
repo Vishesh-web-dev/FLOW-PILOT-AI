@@ -126,7 +126,7 @@ export default function StatsCards() {
 
   if (isLoading) {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
         {[...Array(4)].map((_, i) => (
           <div
             key={i}
@@ -180,7 +180,7 @@ export default function StatsCards() {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+    <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
       {statCards.map((card, i) => (
         <StatCard key={i} {...card} />
       ))}

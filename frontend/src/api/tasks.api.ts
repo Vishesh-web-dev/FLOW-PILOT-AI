@@ -6,6 +6,8 @@ export interface TaskFilters {
   priority?: string;
   projectId?: string;
   sprintId?: string;
+  projectIds?: string;   // comma-separated list for multi-select filter
+  sprintIds?: string;    // comma-separated list for multi-select filter
   search?: string;
 }
 

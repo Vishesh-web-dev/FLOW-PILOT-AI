@@ -370,15 +370,33 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
 
           {/* Project badge */}
           {task.project && (
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: task.project.color,
-                flexShrink: 0,
-              }}
-            />
+            <Tooltip title={task.project.name}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: `${task.project.color}18`,
+                  border: `1px solid ${task.project.color}40`,
+                  borderRadius: 4,
+                  padding: "1px 5px",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: task.project.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: 10, color: task.project.color, maxWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {task.project.name}
+                </span>
+              </div>
+            </Tooltip>
           )}
         </div>
       </div>

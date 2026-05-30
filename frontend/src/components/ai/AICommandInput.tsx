@@ -100,7 +100,7 @@ export default function AICommandInput({
   const randomExamples = AI_COMMAND_EXAMPLES.slice(0, 4);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
       {/* Main Input */}
       <div
         className="ai-input-glow"
@@ -111,6 +111,7 @@ export default function AICommandInput({
           padding: 4,
           transition: "all 0.2s ease",
           boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
+          minWidth: 0,
         }}
       >
         {/* Header bar */}

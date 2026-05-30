@@ -128,12 +128,12 @@ export default function ActivityPage() {
                     }}
                   >
                     <div
+                      className="activity-card-header"
                       style={{
                         display: "flex",
                         alignItems: "flex-start",
                         justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
+                        gap: 8,
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -143,6 +143,7 @@ export default function ActivityPage() {
                             alignItems: "center",
                             gap: 8,
                             marginBottom: 4,
+                            flexWrap: "wrap",
                           }}
                         >
                           <Avatar
@@ -156,7 +157,7 @@ export default function ActivityPage() {
                           >
                             {getInitials(activity.user?.name || "U")}
                           </Avatar>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", flexShrink: 0 }}>
                             {activity.user?.name}
                           </span>
                           <span
@@ -167,6 +168,7 @@ export default function ActivityPage() {
                               padding: "1px 6px",
                               borderRadius: 4,
                               fontWeight: 500,
+                              whiteSpace: "nowrap",
                             }}
                           >
                             {activity.type.replace(/_/g, " ")}
@@ -201,6 +203,7 @@ export default function ActivityPage() {
                       </div>
 
                       <div
+                        className="activity-card-date"
                         style={{
                           fontSize: 11,
                           color: "#475569",

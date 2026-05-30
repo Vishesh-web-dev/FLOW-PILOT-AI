@@ -42,6 +42,7 @@ export default function DashboardPage() {
     <div className="animate-fade-in-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Greeting Header */}
       <div
+        className="dashboard-greeting"
         style={{
           background: "linear-gradient(135deg, #16161d 0%, #1a1a2e 100%)",
           border: "1px solid #1e1e2a",
@@ -115,19 +116,22 @@ export default function DashboardPage() {
       <StatsCards />
 
       {/* Main Content Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20 }}>
+      <div className="dashboard-split" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20 }}>
         {/* Left Column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0, overflow: "hidden" }}>
           {/* AI Command */}
           <AICommandInput compact />
 
           {/* Upcoming Tasks */}
           <div
+            className="upcoming-tasks-card"
             style={{
               background: "#16161d",
               border: "1px solid #1e1e2a",
               borderRadius: 16,
               padding: 20,
+              minWidth: 0,
+              overflow: "hidden",
             }}
           >
             <div
@@ -251,7 +255,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="charts-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <TaskChart type="status" />
         <TaskChart type="priority" />
       </div>

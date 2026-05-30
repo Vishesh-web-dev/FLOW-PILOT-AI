@@ -22,11 +22,12 @@ import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
 
 interface KanbanBoardProps {
-  projectId?: string;
-  sprintId?: string;
+  projectIds?: string;   // comma-separated
+  sprintIds?: string;    // comma-separated
+  noSprintOnly?: boolean;
 }
 
-export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
+export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -35,11 +36,12 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["tasks", { projectId, sprintId }],
+    queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly }],
     queryFn: () =>
       tasksApi.getAll({
-        ...(projectId && { projectId }),
-        ...(sprintId && { sprintId }),
+        ...(projectIds && { projectIds }),
+        ...(sprintIds && { sprintIds }),
+        ...(noSprintOnly && { sprintId: "null" }),
       }),
   });
 
@@ -91,7 +93,7 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
       if (isOverColumn && activeTask.status !== overId) {
         // Optimistic update - update locally
         queryClient.setQueryData(
-          ["tasks", { projectId, sprintId }],
+          ["tasks", { projectIds, sprintIds, noSprintOnly }],
           (old: typeof data) => {
             if (!old?.data?.data) return old;
             return {
@@ -107,7 +109,7 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
         );
       }
     },
-    [tasks, queryClient, projectId, sprintId, data]
+    [tasks, queryClient, projectIds, sprintIds, noSprintOnly, data]
   );
 
   const handleDragEnd = useCallback(
@@ -247,6 +249,7 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
         onDragEnd={handleDragEnd}
       >
         <div
+          className="kanban-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
@@ -284,8 +287,6 @@ export default function KanbanBoard({ projectId, sprintId }: KanbanBoardProps) {
         open={showTaskModal}
         task={editingTask}
         defaultStatus={defaultStatus}
-        projectId={projectId}
-        sprintId={sprintId}
         onClose={() => {
           setShowTaskModal(false);
           setEditingTask(null);

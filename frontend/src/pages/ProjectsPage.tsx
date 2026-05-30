@@ -114,7 +114,7 @@ export default function ProjectsPage() {
       <PendingInvitesBanner />
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 700, background: "linear-gradient(135deg, #e2e8f0, #94a3b8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", letterSpacing: "-0.3px", marginBottom: 4 }}>
             🗂 Projects
@@ -132,7 +132,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "flex", gap: 16 }}>
+      <div className="projects-stats" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         {[
           { label: "Total", count: projects.length, color: "#6366f1" },
           { label: "Active", count: projects.filter((p) => p.status === "ACTIVE" || !p.status).length, color: "#22c55e" },
@@ -161,7 +161,7 @@ export default function ProjectsPage() {
           </Empty>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
+        <div className="projects-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
           {projects.map((project) => {
             const taskCount = project._count?.tasks || 0;
             const sprintCount = project._count?.sprints || 0;
