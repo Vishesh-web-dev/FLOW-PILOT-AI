@@ -1,4 +1,4 @@
-import multer from "multer";
+import multer, { FileFilterCallback } from "multer";
 import { Request, Response, NextFunction } from "express";
 
 // Store in memory — we stream straight to Cloudinary, no disk writes
@@ -9,7 +9,7 @@ export const uploadMiddleware = multer({
   limits: {
     fileSize: 5 * 1024 * 1024, // 5 MB max
   },
-  fileFilter(_req, file, cb) {
+  fileFilter(_req: Request, file: Express.Multer.File, cb: FileFilterCallback) {
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);

@@ -10,6 +10,7 @@ export interface AuthUser {
 
 export interface AuthRequest extends Request {
   user?: AuthUser;
+  file?: Express.Multer.File;
 }
 
 export interface JWTPayload {
