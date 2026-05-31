@@ -28,12 +28,18 @@ export default function LoginPage() {
     },
   });
 
-  const fillDemo = () => {
-    form.setFieldsValue({
-      email: "demo@flowpilot.ai",
-      password: "demo123456",
-    });
-  };
+  const demoMutation = useMutation({
+    mutationFn: () => authApi.demoLogin(),
+    onSuccess: (response) => {
+      const { user, token } = response.data.data!;
+      setAuth(user, token);
+      toast.success(`Welcome to the demo, ${user.name}! 🚀`);
+      navigate("/dashboard");
+    },
+    onError: () => {
+      toast.error("Failed to start demo session. Please try again.");
+    },
+  });
 
   return (
     <div
@@ -124,14 +130,15 @@ export default function LoginPage() {
           {/* Demo button */}
           <button
             type="button"
-            onClick={fillDemo}
+            onClick={() => demoMutation.mutate()}
+            disabled={demoMutation.isPending}
             style={{
               width: "100%",
               background: "rgba(99,102,241,0.08)",
               border: "1px dashed rgba(99,102,241,0.3)",
               borderRadius: 10,
               padding: "10px 16px",
-              cursor: "pointer",
+              cursor: demoMutation.isPending ? "not-allowed" : "pointer",
               color: "#a5b4fc",
               fontSize: 13,
               fontWeight: 500,
@@ -141,16 +148,18 @@ export default function LoginPage() {
               gap: 8,
               marginBottom: 24,
               transition: "all 0.15s ease",
+              opacity: demoMutation.isPending ? 0.6 : 1,
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.15)";
+              if (!demoMutation.isPending)
+                (e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.15)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.08)";
             }}
           >
             <Zap size={14} />
-            Try Demo Account
+            {demoMutation.isPending ? "Signing in..." : "Try Demo Account"}
           </button>
 
           <Form

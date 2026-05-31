@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout, Avatar, Dropdown, Badge, Tooltip } from "antd";
-import { Menu, Bell, LogOut, User, Settings } from "lucide-react";
+import { Menu, Bell, LogOut, User } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { getInitials } from "../../utils/helpers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,14 +32,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
     {
       key: "profile",
       icon: <User size={14} />,
-      label: "Profile",
+      label: "Profile & Settings",
       onClick: () => navigate("/profile"),
-    },
-    {
-      key: "settings",
-      icon: <Settings size={14} />,
-      label: "Settings",
-      onClick: () => navigate("/settings"),
     },
     { type: "divider" as const },
     {
@@ -49,7 +43,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
       danger: true,
       onClick: () => {
         logout();
-        queryClient.clear(); // Wipe all cached data — prevents previous user's data leaking to next login
+        queryClient.clear();
         navigate("/login");
       },
     },
@@ -185,14 +179,17 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           >
             <Avatar
               size={28}
+              src={user?.avatar?.startsWith("http") ? user.avatar : undefined}
               style={{
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                background: user?.avatar?.startsWith("http")
+                  ? "transparent"
+                  : user?.avatar || "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 fontSize: 12,
                 fontWeight: 600,
                 flexShrink: 0,
               }}
             >
-              {user ? getInitials(user.name) : "U"}
+              {user?.avatar?.startsWith("http") ? null : (user ? getInitials(user.name) : "U")}
             </Avatar>
             {!isMobile && (
               <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>

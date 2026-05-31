@@ -10,6 +10,7 @@ import SprintsPage from "./pages/SprintsPage";
 import ActivityPage from "./pages/ActivityPage";
 import RemindersPage from "./pages/RemindersPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuthStore();
@@ -78,6 +79,8 @@ export default function App() {
           <Route path="activity" element={<ActivityPage />} />
           <Route path="reminders" element={<RemindersPage />} />
           <Route path="projects" element={<ProjectsPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="settings" element={<ProfilePage />} />
         </Route>
 
         {/* Fallback */}
