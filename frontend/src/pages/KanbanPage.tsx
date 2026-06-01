@@ -50,7 +50,6 @@ export default function KanbanPage() {
 
       {/* AI Input */}
       <AICommandInput
-        onCommandExecuted={() => queryClient.invalidateQueries({ queryKey: ["tasks"] })}
         compact
       />
 

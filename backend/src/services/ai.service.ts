@@ -154,10 +154,10 @@ ${projectsSection}${membersSection}
 Response format examples:
 
 For CREATE_TASK (with optional project and assignee):
-{"type":"CREATE_TASK","tasks":[{"title":"...","description":"...","priority":"HIGH","dueDate":"...","labels":["backend"],"estimatedHours":2,"projectName":"Product Redesign","assigneeName":"John Doe"}],"message":"Created task: ..."}
+{"type":"CREATE_TASK","tasks":[{"title":"...","description":"...","priority":"HIGH","status":"IN_PROGRESS","dueDate":"...","labels":["backend"],"estimatedHours":2,"projectName":"Product Redesign","assigneeName":"John Doe"}],"message":"Created task: ..."}
 
 For CREATE_TASKS:
-{"type":"CREATE_TASKS","tasks":[{"title":"...","priority":"HIGH","projectName":"Product Redesign"},{"title":"...","priority":"MEDIUM"}],"message":"Created X tasks"}
+{"type":"CREATE_TASKS","tasks":[{"title":"...","priority":"HIGH","status":"TODO","projectName":"Product Redesign"},{"title":"...","priority":"MEDIUM","status":"IN_PROGRESS"}],"message":"Created X tasks"}
 
 For UPDATE_TASK_STATUS:
 {"type":"UPDATE_TASK_STATUS","taskTitles":["Fix login bug"],"newStatus":"IN_PROGRESS","projectName":"Product Redesign","message":"Moved task to In Progress"}
@@ -198,6 +198,8 @@ Be smart about:
 - "meeting" or "review" → labels: ["meeting"]
 - "backend" → labels: ["backend"], "frontend" → labels: ["frontend"]
 - "move X to in progress" → UPDATE_TASK_STATUS with newStatus: "IN_PROGRESS"
+- "create a task in progress / in review / done" → CREATE_TASK with status set accordingly (TODO is default)
+- If user says "in review", "in progress", "done" while creating a task, set status in the tasks array
 - "mark X as done" / "complete X" → COMPLETE_TASKS
 - "delete X" / "remove X" → DELETE_TASK or DELETE_TASKS
 - "move X to sprint Y" → MOVE_TASKS_TO_SPRINT

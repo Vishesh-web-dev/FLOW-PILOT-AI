@@ -87,6 +87,7 @@ export interface AIActionResult {
     title: string;
     description?: string;
     priority?: Priority;
+    status?: string;        // e.g. "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE"
     dueDate?: string;
     labels?: string[];
     estimatedHours?: number;

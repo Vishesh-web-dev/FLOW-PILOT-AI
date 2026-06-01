@@ -6,7 +6,7 @@ import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { aiService } from "../services/ai.service";
 import { activityService } from "../services/activity.service";
-import { getSocketInstance, emitToProject } from "../socket";
+import { getSocketInstance, emitToProject, emitToUser } from "../socket";
 
 export const aiCommandSchema = z.object({
   command: z.string().min(1, "Command is required").max(1000),
@@ -79,14 +79,11 @@ export const aiController = {
       );
 
       // Emit real-time update
-      const io = getSocketInstance();
-      if (io) {
-        io.to(`user:${userId}`).emit("ai:action_executed", {
-          command,
-          result: aiResult,
-          executed: executedResult,
-        });
-      }
+      emitToUser(userId, "ai:action_executed", {
+        command,
+        result: aiResult,
+        executed: executedResult,
+      });
 
       sendSuccess(
         res,
@@ -197,8 +194,9 @@ async function executeAIAction(
 
       const createdTasks = await Promise.all(
         aiResult.tasks.map(async (taskData, index) => {
+          const taskStatus = (taskData.status as any) || "TODO";
           const maxPos = await prisma.task.findFirst({
-            where: { userId, status: "TODO" },
+            where: { userId, status: taskStatus },
             orderBy: { position: "desc" },
             select: { position: true },
           });
@@ -208,6 +206,7 @@ async function executeAIAction(
               title: taskData.title,
               description: taskData.description,
               priority: taskData.priority || "MEDIUM",
+              status: taskStatus,
               dueDate: taskData.dueDate ? new Date(taskData.dueDate) : undefined,
               labels: taskData.labels || [],
               estimatedHours: taskData.estimatedHours,
@@ -234,6 +233,15 @@ async function executeAIAction(
           })
         )
       );
+
+      // Socket: broadcast each created task to project room or user room
+      for (const task of createdTasks) {
+        if (task.projectId) {
+          emitToProject(task.projectId, "task:created", task);
+        } else {
+          emitToUser(userId, "task:created", task);
+        }
+      }
 
       return { created: createdTasks.length, tasks: createdTasks };
     }
@@ -305,6 +313,19 @@ async function executeAIAction(
         metadata: { sprintId: sprint.id },
       });
 
+      // Socket: broadcast sprint + its tasks
+      if (projectId) {
+        emitToProject(projectId, "sprint:created", sprint);
+        for (const task of tasks) {
+          emitToProject(projectId, "task:created", task);
+        }
+      } else {
+        emitToUser(userId, "sprint:created", sprint);
+        for (const task of tasks) {
+          emitToUser(userId, "task:created", task);
+        }
+      }
+
       return { sprint, tasks, tasksCreated: tasks.length };
     }
 
@@ -327,21 +348,23 @@ async function executeAIAction(
           userId,
           title: { in: titles, mode: "insensitive" },
         },
+        select: { id: true, title: true, projectId: true },
       });
 
       if (!tasks.length) return { updated: 0, message: "No matching tasks found" };
 
-      await Promise.all(
+      const updatedTasks = await Promise.all(
         tasks.map((task) =>
           prisma.task.update({
             where: { id: task.id },
             data: { status: aiResult.newStatus as any },
+            include: { project: { select: { id: true, name: true, color: true } } },
           })
         )
       );
 
       await Promise.all(
-        tasks.map((task) =>
+        updatedTasks.map((task) =>
           activityService.log({
             userId,
             type: "TASK_UPDATED",
@@ -351,7 +374,16 @@ async function executeAIAction(
         )
       );
 
-      return { updated: tasks.length, tasks: tasks.map((t) => t.title) };
+      // Socket
+      for (const task of updatedTasks) {
+        if (task.projectId) {
+          emitToProject(task.projectId, "task:updated", task);
+        } else {
+          emitToUser(userId, "task:updated", task);
+        }
+      }
+
+      return { updated: updatedTasks.length, tasks: updatedTasks.map((t) => t.title) };
     }
 
     case "COMPLETE_TASKS": {
@@ -365,18 +397,23 @@ async function executeAIAction(
 
       const tasks = await prisma.task.findMany({
         where: { userId, title: { in: titles, mode: "insensitive" } },
+        select: { id: true, title: true, projectId: true },
       });
 
       if (!tasks.length) return { updated: 0, message: "No matching tasks found" };
 
-      await Promise.all(
+      const updatedTasks = await Promise.all(
         tasks.map((task) =>
-          prisma.task.update({ where: { id: task.id }, data: { status: "DONE" } })
+          prisma.task.update({
+            where: { id: task.id },
+            data: { status: "DONE" },
+            include: { project: { select: { id: true, name: true, color: true } } },
+          })
         )
       );
 
       await Promise.all(
-        tasks.map((task) =>
+        updatedTasks.map((task) =>
           activityService.log({
             userId,
             type: "TASK_UPDATED",
@@ -386,7 +423,16 @@ async function executeAIAction(
         )
       );
 
-      return { updated: tasks.length, tasks: tasks.map((t) => t.title) };
+      // Socket
+      for (const task of updatedTasks) {
+        if (task.projectId) {
+          emitToProject(task.projectId, "task:updated", task);
+        } else {
+          emitToUser(userId, "task:updated", task);
+        }
+      }
+
+      return { updated: updatedTasks.length, tasks: updatedTasks.map((t) => t.title) };
     }
 
     case "DELETE_TASK": {
@@ -406,6 +452,13 @@ async function executeAIAction(
         type: "TASK_DELETED",
         description: `AI deleted task: "${task.title}"`,
       });
+
+      // Socket
+      if (task.projectId) {
+        emitToProject(task.projectId, "task:deleted", { id: task.id, projectId: task.projectId });
+      } else {
+        emitToUser(userId, "task:deleted", { id: task.id });
+      }
 
       return { deleted: 1, task: task.title };
     }
@@ -434,6 +487,15 @@ async function executeAIAction(
         )
       );
 
+      // Socket
+      for (const task of tasks) {
+        if (task.projectId) {
+          emitToProject(task.projectId, "task:deleted", { id: task.id, projectId: task.projectId });
+        } else {
+          emitToUser(userId, "task:deleted", { id: task.id });
+        }
+      }
+
       return { deleted: tasks.length, tasks: tasks.map((t) => t.title) };
     }
 
@@ -456,6 +518,7 @@ async function executeAIAction(
           ...(aiResult.updates.description && { description: aiResult.updates.description }),
           ...(aiResult.updates.estimatedHours && { estimatedHours: aiResult.updates.estimatedHours }),
         },
+        include: { project: { select: { id: true, name: true, color: true } } },
       });
 
       await activityService.log({
@@ -465,6 +528,13 @@ async function executeAIAction(
         taskId: updated.id,
         metadata: aiResult.updates as Record<string, unknown>,
       });
+
+      // Socket
+      if (updated.projectId) {
+        emitToProject(updated.projectId, "task:updated", updated);
+      } else {
+        emitToUser(userId, "task:updated", updated);
+      }
 
       return { updated: 1, task: updated.title };
     }
@@ -497,6 +567,16 @@ async function executeAIAction(
         description: `AI moved ${tasks.length} task(s) to sprint "${sprint.name}"`,
         metadata: { sprintId: sprint.id, taskCount: tasks.length },
       });
+
+      // Socket — emit task:updated for each moved task
+      for (const task of tasks) {
+        const payload = { ...task, sprintId: sprint.id };
+        if (task.projectId) {
+          emitToProject(task.projectId, "task:updated", payload);
+        } else {
+          emitToUser(userId, "task:updated", payload);
+        }
+      }
 
       return { moved: tasks.length, sprint: sprint.name, tasks: tasks.map((t) => t.title) };
     }

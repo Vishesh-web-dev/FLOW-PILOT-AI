@@ -36,25 +36,11 @@ export default function AICommandInput({
         setLastResponse(data);
         onCommandExecuted?.(data);
         toast.success(data.aiResult.message || "✅ Command executed successfully!");
-
-        // Invalidate relevant queries based on action type
-        const type = data.aiResult.type;
-        if (["CREATE_TASK", "CREATE_TASKS", "BREAKDOWN_TASK"].includes(type)) {
-          queryClient.invalidateQueries({ queryKey: ["tasks"] });
-          queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-        }
-        if (type === "CREATE_REMINDER") {
-          queryClient.invalidateQueries({ queryKey: ["reminders"] });
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-        }
-        if (type === "CREATE_SPRINT") {
-          queryClient.invalidateQueries({ queryKey: ["sprints"] });
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-        }
-        if (type === "SUMMARIZE") {
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-        }
+        // Query invalidation is handled entirely by socket events:
+        // task:created / task:updated / task:deleted → tasks + task-stats
+        // activity:new → activities
+        // ai:action_executed → sprints (CREATE_SPRINT) / reminders (CREATE_REMINDER)
+        // Doing it here too would cause duplicate API calls.
       }
       setCommand("");
     },
