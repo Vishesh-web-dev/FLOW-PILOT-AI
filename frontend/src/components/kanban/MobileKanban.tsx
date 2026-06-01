@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button, Spin } from "antd";
 import { Plus, RefreshCw } from "lucide-react";
 import { tasksApi } from "../../api/tasks.api";
@@ -18,7 +18,6 @@ export default function MobileKanban({ projectIds, sprintIds, noSprintOnly }: Mo
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>("TODO");
-  const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly }],
@@ -257,7 +256,7 @@ export default function MobileKanban({ projectIds, sprintIds, noSprintOnly }: Mo
         onClose={() => {
           setShowTaskModal(false);
           setEditingTask(null);
-          queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          // socket events task:created/task:updated handle cache invalidation
         }}
       />
     </div>

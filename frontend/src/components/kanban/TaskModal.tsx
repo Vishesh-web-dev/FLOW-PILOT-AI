@@ -11,7 +11,7 @@ import {
   Space,
   Avatar,
 } from "antd";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import { Task, TaskStatus, Priority, CreateTaskForm } from "../../types";
@@ -44,7 +44,6 @@ export default function TaskModal({
   onClose,
 }: TaskModalProps) {
   const [form] = Form.useForm();
-  const queryClient = useQueryClient();
   const isEditing = !!task;
 
   // Track selected projectId in form to fetch members
@@ -105,9 +104,7 @@ export default function TaskModal({
   const createMutation = useMutation({
     mutationFn: tasksApi.create,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      // socket event task:created handles cache invalidation
       toast.success("Task created!");
       onClose();
     },
@@ -132,9 +129,7 @@ export default function TaskModal({
       return tasksApi.update(id, fixedData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      // socket event task:updated handles cache invalidation
       toast.success("Task updated!");
       onClose();
     },

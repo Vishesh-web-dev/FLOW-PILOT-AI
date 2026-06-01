@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Tag, Tooltip, Popconfirm } from "antd";
-import { Calendar, Clock, Layers, GripVertical, Edit3, AlertCircle, Trash2 } from "lucide-react";
+import { Calendar, Clock, Layers, Edit3, AlertCircle, Trash2 } from "lucide-react";
 import { Task } from "../../types";
 import {
   getPriorityConfig,
@@ -11,7 +11,8 @@ import {
   isDueSoon,
   truncate,
 } from "../../utils/helpers";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+
 import { tasksApi } from "../../api/tasks.api";
 import toast from "react-hot-toast";
 
@@ -31,13 +32,10 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
     isDragging: isSortableDragging,
   } = useSortable({ id: task.id });
 
-  const queryClient = useQueryClient();
-
   const deleteMutation = useMutation({
     mutationFn: () => tasksApi.delete(task.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+      // socket event task:deleted handles cache invalidation
       toast.success("Task deleted");
     },
     onError: () => toast.error("Failed to delete task"),
@@ -59,19 +57,24 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
   return (
     <div
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       style={{
-        ...style,
+        ...style,  // contains dnd-kit's transform + transition (transform only)
         background: isDragging ? "#2a2a3a" : "#1c1c24",
         border: `1px solid ${isSortableDragging || isDragging ? priorityConfig.border : "#2a2a3a"}`,
         borderRadius: 10,
         padding: 12,
-        cursor: "grab",
-        transition: "all 0.15s ease",
+        cursor: isSortableDragging ? "grabbing" : "grab",
+        // ⚠️ Do NOT use "transition: all" here — it overrides dnd-kit's
+        // transform-only transition and causes cards to fly in from above on drop.
+        // Hover transitions (border, shadow) are handled via onMouseEnter/Leave JS.
         boxShadow: isDragging
           ? "0 20px 40px rgba(0,0,0,0.6)"
           : "0 2px 8px rgba(0,0,0,0.3)",
         position: "relative",
         overflow: "hidden",
+        userSelect: "none",
       }}
       onMouseEnter={(e) => {
         if (!isSortableDragging) {
@@ -112,19 +115,6 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-          <div
-            {...attributes}
-            {...listeners}
-            style={{
-              color: "#3b4060",
-              cursor: "grab",
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            <GripVertical size={14} />
-          </div>
           <Tooltip title={task.title}>
             <span
               style={{
@@ -151,6 +141,7 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
               e.stopPropagation();
               onEdit();
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
               background: "none",
               border: "none",
@@ -199,6 +190,7 @@ export default function TaskCard({ task, onEdit, isDragging }: TaskCardProps) {
           >
             <button
               onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
               style={{
                 background: "none",
                 border: "none",

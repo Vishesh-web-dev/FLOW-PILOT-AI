@@ -381,16 +381,22 @@ export const taskController = {
         )
       );
 
-      // Emit reorder to all affected project rooms
+      // Emit reorder to all affected project rooms; personal tasks → user room
       const affectedProjectIds = new Set<string>();
       const updatedTasks = await prisma.task.findMany({
         where: { id: { in: tasks.map((t) => t.id) } },
         select: { id: true, projectId: true, status: true, position: true },
       });
       updatedTasks.forEach((t) => { if (t.projectId) affectedProjectIds.add(t.projectId); });
-      affectedProjectIds.forEach((projectId) => {
-        emitToProject(projectId, "tasks:reordered", tasks);
-      });
+
+      if (affectedProjectIds.size > 0) {
+        affectedProjectIds.forEach((projectId) => {
+          emitToProject(projectId, "tasks:reordered", tasks);
+        });
+      } else {
+        // Personal tasks — emit only to the owner so their other tabs stay in sync
+        emitToUser(userId, "tasks:reordered", tasks);
+      }
 
       sendSuccess(res, { updated: tasks.length }, "Tasks reordered");
     } catch (error) {

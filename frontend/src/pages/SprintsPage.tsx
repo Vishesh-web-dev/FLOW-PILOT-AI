@@ -141,10 +141,7 @@ export default function SprintsPage() {
       </div>
 
       {/* AI Command Input */}
-      <AICommandInput
-        onCommandExecuted={() => queryClient.invalidateQueries({ queryKey: ["sprints"] })}
-        compact
-      />
+      <AICommandInput compact />
 
       {/* Sprints Grid */}
       {isLoading ? (
