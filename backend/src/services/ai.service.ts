@@ -112,6 +112,7 @@ function handleAIError(error: unknown): never {
 const buildSystemPrompt = (contextData?: {
   projects?: Array<{ id: string; name: string }>;
   members?: Array<{ name: string; email: string }>;
+  sprints?: Array<{ id: string; name: string }>;
 }) => {
   let projectsSection = "";
   if (contextData?.projects && contextData.projects.length > 0) {
@@ -121,6 +122,11 @@ const buildSystemPrompt = (contextData?: {
   let membersSection = "";
   if (contextData?.members && contextData.members.length > 0) {
     membersSection = `\n\nTeam members available for assignment (use name in assigneeName field):\n${contextData.members.map((m) => `- ${m.name} (${m.email})`).join("\n")}`;
+  }
+
+  let sprintsSection = "";
+  if (contextData?.sprints && contextData.sprints.length > 0) {
+    sprintsSection = `\n\nAvailable sprints (use exact name in sprintName field):\n${contextData.sprints.map((s) => `- "${s.name}" (id: ${s.id})`).join("\n")}`;
   }
 
   return `You are FlowPilot AI, an intelligent workflow automation assistant.
@@ -149,12 +155,12 @@ Task status: TODO, IN_PROGRESS, IN_REVIEW, DONE
 
 Date format for dueDate: ISO 8601 (e.g., "${new Date().toISOString()}")
 Today's date: ${new Date().toISOString()}
-${projectsSection}${membersSection}
+${projectsSection}${membersSection}${sprintsSection}
 
 Response format examples:
 
-For CREATE_TASK (with optional project and assignee):
-{"type":"CREATE_TASK","tasks":[{"title":"...","description":"...","priority":"HIGH","status":"IN_PROGRESS","dueDate":"...","labels":["backend"],"estimatedHours":2,"projectName":"Product Redesign","assigneeName":"John Doe"}],"message":"Created task: ..."}
+For CREATE_TASK (with optional project, assignee, and sprint):
+{"type":"CREATE_TASK","tasks":[{"title":"...","description":"...","priority":"HIGH","status":"IN_PROGRESS","dueDate":"...","labels":["backend"],"estimatedHours":2,"projectName":"Product Redesign","assigneeName":"John Doe","sprintName":"Sprint 1"}],"message":"Created task: ..."}
 
 For CREATE_TASKS:
 {"type":"CREATE_TASKS","tasks":[{"title":"...","priority":"HIGH","status":"TODO","projectName":"Product Redesign"},{"title":"...","priority":"MEDIUM","status":"IN_PROGRESS"}],"message":"Created X tasks"}
@@ -217,6 +223,7 @@ export const aiService = {
       recentActivities?: string[];
       projects?: Array<{ id: string; name: string }>;
       members?: Array<{ name: string; email: string }>;
+      sprints?: Array<{ id: string; name: string }>;
     }
   ): Promise<AIActionResult> {
     try {
@@ -232,7 +239,7 @@ export const aiService = {
       }
 
       const content = await callAI(
-        buildSystemPrompt({ projects: contextData?.projects, members: contextData?.members }),
+        buildSystemPrompt({ projects: contextData?.projects, members: contextData?.members, sprints: contextData?.sprints }),
         userInput + contextMessage
       );
       const parsed = parseAIResponse(content);

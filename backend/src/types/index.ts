@@ -93,6 +93,7 @@ export interface AIActionResult {
     estimatedHours?: number;
     projectName?: string;   // AI returns name; backend resolves to projectId
     assigneeName?: string;  // AI returns name; backend resolves to assigneeId
+    sprintName?: string;    // AI returns name; backend resolves to sprintId
   }>;
   // For operations on existing tasks
   taskTitle?: string;

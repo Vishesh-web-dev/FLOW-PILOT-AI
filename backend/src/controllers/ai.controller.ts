@@ -30,8 +30,8 @@ export const aiController = {
         return;
       }
 
-      // Get context for AI
-      const [recentTasks, recentActivities] = await Promise.all([
+      // Get context for AI — tasks, activities, projects the user belongs to, and team members
+      const [recentTasks, recentActivities, userProjects, userSprints] = await Promise.all([
         prisma.task.findMany({
           where: { userId },
           select: { title: true, status: true, priority: true },
@@ -44,12 +44,49 @@ export const aiController = {
           orderBy: { createdAt: "desc" },
           take: 5,
         }),
+        // Fetch all projects this user owns or is a member of
+        prisma.project.findMany({
+          where: {
+            OR: [
+              { userId },
+              { members: { some: { userId } } },
+            ],
+          },
+          select: {
+            id: true,
+            name: true,
+            members: {
+              select: {
+                user: { select: { id: true, name: true, email: true } },
+              },
+            },
+          },
+        }),
+        // Fetch all active sprints
+        prisma.sprint.findMany({
+          where: { userId },
+          select: { id: true, name: true },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        }),
       ]);
 
-      // Process command with AI
+      // Flatten unique team members across all projects
+      const memberMap = new Map<string, { id: string; name: string; email: string }>();
+      for (const project of userProjects) {
+        for (const m of project.members) {
+          memberMap.set(m.user.id, m.user);
+        }
+      }
+      const members = Array.from(memberMap.values());
+
+      // Process command with AI — pass projects + members + sprints so AI can resolve names
       const aiResult = await aiService.processCommand(command, {
         tasks: recentTasks,
         recentActivities: recentActivities.map((a) => a.description),
+        projects: userProjects.map((p) => ({ id: p.id, name: p.name })),
+        members: members.map((m) => ({ name: m.name, email: m.email })),
+        sprints: userSprints,
       });
 
       // Store AI command history
@@ -75,7 +112,9 @@ export const aiController = {
         aiResult,
         userId,
         projectId,
-        sprintId
+        sprintId,
+        userProjects.map((p) => ({ id: p.id, name: p.name })),
+        members
       );
 
       // Emit real-time update
@@ -178,11 +217,32 @@ export const aiController = {
 };
 
 // Helper function to execute AI actions
+type ProjectCtx = { id: string; name: string };
+type MemberCtx = { id: string; name: string; email: string };
+
+/**
+ * Fuzzy-match a name against a list of candidates.
+ * Returns the best match or undefined.
+ */
+function resolveByName<T extends { name: string }>(name: string | undefined, list: T[]): T | undefined {
+  if (!name || !list.length) return undefined;
+  const lower = name.toLowerCase().trim();
+  // Exact match first
+  const exact = list.find((item) => item.name.toLowerCase() === lower);
+  if (exact) return exact;
+  // Partial match (AI output may be partial)
+  return list.find(
+    (item) => item.name.toLowerCase().includes(lower) || lower.includes(item.name.toLowerCase())
+  );
+}
+
 async function executeAIAction(
   aiResult: Awaited<ReturnType<typeof aiService.processCommand>>,
   userId: string,
   projectId?: string,
-  sprintId?: string
+  sprintId?: string,
+  projects: ProjectCtx[] = [],
+  members: MemberCtx[] = []
 ): Promise<Record<string, unknown>> {
   switch (aiResult.type) {
     case "CREATE_TASK":
@@ -195,6 +255,31 @@ async function executeAIAction(
       const createdTasks = await Promise.all(
         aiResult.tasks.map(async (taskData, index) => {
           const taskStatus = (taskData.status as any) || "TODO";
+
+          // ── Resolve projectId: per-task name > top-level AI name > request projectId ──
+          const taskProjectName = taskData.projectName || aiResult.projectName;
+          const resolvedProject = resolveByName(taskProjectName, projects);
+          const resolvedProjectId = resolvedProject?.id ?? projectId;
+
+          // ── Resolve assigneeId from assigneeName ──────────────────────────────────────
+          const taskAssigneeName = taskData.assigneeName || aiResult.assigneeName;
+          const resolvedMember = resolveByName(taskAssigneeName, members);
+          const resolvedAssigneeId = resolvedMember?.id;
+
+          // ── Resolve sprintId from sprintName ─────────────────────────────────────────
+          let resolvedSprintId = sprintId;
+          if (taskData.sprintName) {
+            const foundSprint = await prisma.sprint.findFirst({
+              where: {
+                userId,
+                name: { contains: taskData.sprintName, mode: "insensitive" },
+                ...(resolvedProjectId && { projectId: resolvedProjectId }),
+              },
+              select: { id: true },
+            });
+            if (foundSprint) resolvedSprintId = foundSprint.id;
+          }
+
           const maxPos = await prisma.task.findFirst({
             where: { userId, status: taskStatus },
             orderBy: { position: "desc" },
@@ -211,8 +296,9 @@ async function executeAIAction(
               labels: taskData.labels || [],
               estimatedHours: taskData.estimatedHours,
               userId,
-              ...(projectId && { projectId }),
-              ...(sprintId && { sprintId }),
+              ...(resolvedProjectId && { projectId: resolvedProjectId }),
+              ...(resolvedSprintId && { sprintId: resolvedSprintId }),
+              ...(resolvedAssigneeId && { assigneeId: resolvedAssigneeId }),
               position: (maxPos?.position ?? -1) + index + 1,
             },
             include: {
@@ -343,10 +429,15 @@ async function executeAIAction(
 
       if (!titles.length || !aiResult.newStatus) return { updated: 0 };
 
+      // Scope by project if AI identified one
+      const statusProject = resolveByName(aiResult.projectName, projects);
+      const statusProjectId = statusProject?.id ?? projectId;
+
       const tasks = await prisma.task.findMany({
         where: {
           userId,
           title: { in: titles, mode: "insensitive" },
+          ...(statusProjectId && { projectId: statusProjectId }),
         },
         select: { id: true, title: true, projectId: true },
       });
@@ -509,6 +600,10 @@ async function executeAIAction(
 
       if (!task) return { updated: 0, message: `Task "${title}" not found` };
 
+      // Resolve assigneeName → assigneeId
+      const updateAssigneeName = aiResult.updates.assigneeName;
+      const updateAssignee = resolveByName(updateAssigneeName, members);
+
       const updated = await prisma.task.update({
         where: { id: task.id },
         data: {
@@ -517,6 +612,7 @@ async function executeAIAction(
           ...(aiResult.updates.labels && { labels: aiResult.updates.labels }),
           ...(aiResult.updates.description && { description: aiResult.updates.description }),
           ...(aiResult.updates.estimatedHours && { estimatedHours: aiResult.updates.estimatedHours }),
+          ...(updateAssignee && { assigneeId: updateAssignee.id }),
         },
         include: { project: { select: { id: true, name: true, color: true } } },
       });
