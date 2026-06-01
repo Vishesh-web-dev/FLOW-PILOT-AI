@@ -269,82 +269,207 @@ export const authController = {
       const DEMO_PASSWORD = "demo123456";
       const DEMO_NAME = "Demo User";
 
+      // ── 1. Ensure user exists ──────────────────────────────────────────────
       let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
-      const isNew = !user;
-
       if (!user) {
         const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 12);
         user = await prisma.user.create({
           data: { name: DEMO_NAME, email: DEMO_EMAIL, password: hashedPassword },
         });
-
-        // ── Seed sample data for the demo account ──────────────────────────
-        const project = await prisma.project.create({
-          data: {
-            name: "Demo Project",
-            description: "A sample project to explore FlowPilot AI",
-            color: "#6366f1",
-            userId: user.id,
-          },
-        });
-
-        const sprint = await prisma.sprint.create({
-          data: {
-            name: "Sprint 1",
-            goal: "Ship the MVP",
-            startDate: new Date(),
-            endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-            status: "ACTIVE",
-            userId: user.id,
-            projectId: project.id,
-          },
-        });
-
-        const sampleTasks = [
-          { title: "Set up project structure", status: "DONE", priority: "HIGH", position: 0 },
-          { title: "Design database schema", status: "DONE", priority: "HIGH", position: 1 },
-          { title: "Build REST API endpoints", status: "IN_PROGRESS", priority: "HIGH", position: 2 },
-          { title: "Implement authentication", status: "IN_PROGRESS", priority: "URGENT", position: 3 },
-          { title: "Create dashboard UI", status: "TODO", priority: "MEDIUM", position: 4 },
-          { title: "Write unit tests", status: "TODO", priority: "MEDIUM", position: 5 },
-          { title: "Deploy to production", status: "TODO", priority: "LOW", position: 6 },
-        ] as const;
-
-        for (const t of sampleTasks) {
-          await prisma.task.create({
-            data: {
-              ...t,
-              userId: user.id,
-              projectId: project.id,
-              sprintId: sprint.id,
-              labels: ["demo"],
-            },
-          });
-        }
-
-        await activityService.log({
-          userId: user.id,
-          type: "USER_REGISTERED",
-          description: `${user.name} joined FlowPilot AI`,
-        });
-
-        logger.info(`Demo account created and seeded for ${DEMO_EMAIL}`);
       }
 
-      const token = generateToken({ userId: user.id, email: user.email });
+      const userId = user.id;
 
-      const userResponse = {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt,
-      };
+      // ── 2. Wipe all existing demo data (order matters for FK constraints) ──
+      await prisma.aICommand.deleteMany({ where: { userId } });
+      await prisma.activity.deleteMany({ where: { userId } });
+      await prisma.reminder.deleteMany({ where: { userId } });
+      await prisma.task.deleteMany({ where: { userId } });
+      await prisma.sprint.deleteMany({ where: { userId } });
+      await prisma.projectMember.deleteMany({ where: { userId } });
+      await prisma.project.deleteMany({ where: { userId } });
+
+      // ── 3. Re-seed rich demo data ──────────────────────────────────────────
+      const now = new Date();
+      const daysFromNow = (d: number) => new Date(now.getTime() + d * 86_400_000);
+      const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
+
+      // Projects
+      const [projectAlpha, projectBeta] = await Promise.all([
+        prisma.project.create({
+          data: {
+            name: "FlowPilot Redesign",
+            description: "Complete redesign of the FlowPilot product for Q3 launch",
+            color: "#6366f1",
+            userId,
+            members: { create: { userId, role: "OWNER" } },
+          },
+        }),
+        prisma.project.create({
+          data: {
+            name: "Mobile App MVP",
+            description: "Ship the iOS and Android MVP by end of quarter",
+            color: "#10b981",
+            userId,
+            members: { create: { userId, role: "OWNER" } },
+          },
+        }),
+      ]);
+
+      // Sprints
+      const [sprintAlpha1, sprintAlpha2, sprintBeta1] = await Promise.all([
+        prisma.sprint.create({
+          data: {
+            name: "Sprint 1 — Foundation",
+            goal: "Set up architecture and core flows",
+            startDate: daysAgo(14),
+            endDate: daysAgo(1),
+            status: "COMPLETED",
+            userId,
+            projectId: projectAlpha.id,
+          },
+        }),
+        prisma.sprint.create({
+          data: {
+            name: "Sprint 2 — UI Polish",
+            goal: "Pixel-perfect components and dark mode",
+            startDate: now,
+            endDate: daysFromNow(13),
+            status: "ACTIVE",
+            userId,
+            projectId: projectAlpha.id,
+          },
+        }),
+        prisma.sprint.create({
+          data: {
+            name: "Sprint 1 — MVP Core",
+            goal: "Auth, onboarding, and home screen",
+            startDate: daysAgo(7),
+            endDate: daysFromNow(7),
+            status: "ACTIVE",
+            userId,
+            projectId: projectBeta.id,
+          },
+        }),
+      ]);
+
+      // Tasks — FlowPilot Redesign / Sprint 1 (completed sprint)
+      const alphaS1Tasks = [
+        { title: "Set up monorepo with Turborepo", status: "DONE", priority: "HIGH", position: 0, labels: ["setup"] },
+        { title: "Configure CI/CD pipeline", status: "DONE", priority: "HIGH", position: 1, labels: ["devops"] },
+        { title: "Design system tokens (colors, spacing)", status: "DONE", priority: "HIGH", position: 2, labels: ["design"] },
+        { title: "Authentication flow — login & register", status: "DONE", priority: "URGENT", position: 3, labels: ["auth"] },
+        { title: "Database schema v1", status: "DONE", priority: "HIGH", position: 4, labels: ["backend"] },
+      ] as const;
+
+      // Tasks — FlowPilot Redesign / Sprint 2 (active sprint, mixed statuses)
+      const alphaS2Tasks = [
+        { title: "Redesign dashboard layout", status: "IN_PROGRESS", priority: "HIGH", position: 0, labels: ["frontend", "design"] },
+        { title: "Build Kanban board component", status: "IN_PROGRESS", priority: "HIGH", position: 1, labels: ["frontend"] },
+        { title: "Dark mode implementation", status: "IN_REVIEW", priority: "MEDIUM", position: 2, labels: ["frontend"] },
+        { title: "AI command input widget", status: "IN_REVIEW", priority: "HIGH", position: 3, labels: ["frontend", "ai"] },
+        { title: "Sprint planning UI", status: "TODO", priority: "MEDIUM", position: 4, labels: ["frontend"] },
+        { title: "Notification centre", status: "TODO", priority: "LOW", position: 5, labels: ["frontend"] },
+        { title: "Write Storybook stories for components", status: "TODO", priority: "LOW", position: 6, labels: ["docs"] },
+      ] as const;
+
+      // Tasks — Mobile App / Sprint 1 (active)
+      const betaS1Tasks = [
+        { title: "React Native project scaffold", status: "DONE", priority: "HIGH", position: 0, labels: ["setup"] },
+        { title: "Implement biometric login", status: "IN_PROGRESS", priority: "URGENT", position: 1, labels: ["auth", "mobile"] },
+        { title: "Home screen — task feed", status: "IN_PROGRESS", priority: "HIGH", position: 2, labels: ["mobile"] },
+        { title: "Push notification integration", status: "TODO", priority: "HIGH", position: 3, labels: ["mobile"] },
+        { title: "Offline mode with SQLite cache", status: "TODO", priority: "MEDIUM", position: 4, labels: ["mobile"] },
+        { title: "App Store & Play Store listing assets", status: "TODO", priority: "LOW", position: 5, labels: ["marketing"] },
+      ] as const;
+
+      // Standalone personal tasks (no project)
+      const personalTasks = [
+        { title: "Review Q3 OKRs with team", status: "TODO", priority: "HIGH", position: 0, labels: ["planning"] },
+        { title: "Prepare investor deck", status: "IN_PROGRESS", priority: "URGENT", position: 1, labels: ["business"] },
+        { title: "1:1 with design lead — agenda prep", status: "DONE", priority: "MEDIUM", position: 2, labels: ["meeting"] },
+      ] as const;
+
+      const createTasks = async (
+        tasks: readonly { title: string; status: string; priority: string; position: number; labels: readonly string[] }[],
+        projectId: string,
+        sprintId: string,
+        dueOffsets: number[]
+      ) =>
+        Promise.all(
+          tasks.map((t, i) =>
+            prisma.task.create({
+              data: {
+                title: t.title,
+                status: t.status as any,
+                priority: t.priority as any,
+                position: t.position,
+                labels: [...t.labels],
+                userId,
+                projectId,
+                sprintId,
+                dueDate: dueOffsets[i] != null ? daysFromNow(dueOffsets[i]) : undefined,
+                estimatedHours: [2, 3, 4, 6, 8][i % 5],
+              },
+            })
+          )
+        );
+
+      await createTasks(alphaS1Tasks, projectAlpha.id, sprintAlpha1.id, [0, 0, 0, 0, 0]);
+      await createTasks(alphaS2Tasks, projectAlpha.id, sprintAlpha2.id, [2, 3, 1, 4, 7, 10, 12]);
+      await createTasks(betaS1Tasks, projectBeta.id, sprintBeta1.id, [0, 2, 4, 6, 8, 10]);
+
+      await Promise.all(
+        personalTasks.map((t) =>
+          prisma.task.create({
+            data: { ...t, labels: [...t.labels], userId },
+          })
+        )
+      );
+
+      // Reminders
+      await Promise.all([
+        prisma.reminder.create({
+          data: { title: "Sprint 2 standup", description: "Daily sync at 9am", remindAt: daysFromNow(1), userId },
+        }),
+        prisma.reminder.create({
+          data: { title: "Investor call prep", description: "Prepare slides for Series A deck review", remindAt: daysFromNow(3), userId },
+        }),
+        prisma.reminder.create({
+          data: { title: "Design review", description: "Review final mockups with the design team", remindAt: daysFromNow(5), userId },
+        }),
+      ]);
+
+      // Activities
+      const activityEntries = [
+        { type: "TASK_UPDATED" as const, description: "Moved \"Authentication flow\" to Done", daysBack: 1 },
+        { type: "SPRINT_CREATED" as const, description: "Started Sprint 2 — UI Polish", daysBack: 0 },
+        { type: "TASK_CREATED" as const, description: "Created task: \"Redesign dashboard layout\"", daysBack: 0 },
+        { type: "AI_COMMAND" as const, description: "AI Command: \"Break down the dashboard redesign into subtasks\"", daysBack: 0 },
+        { type: "TASK_CREATED" as const, description: "Created task: \"Prepare investor deck\"", daysBack: 2 },
+      ];
+
+      for (const entry of activityEntries) {
+        await prisma.activity.create({
+          data: {
+            userId,
+            type: entry.type,
+            description: entry.description,
+            createdAt: daysAgo(entry.daysBack),
+          },
+        });
+      }
+
+      // ── 4. Issue JWT ───────────────────────────────────────────────────────
+      const token = generateToken({ userId, email: user.email });
 
       sendSuccess(
         res,
-        { user: userResponse, token },
-        isNew ? "Demo account created — explore freely!" : "Welcome back to the demo!"
+        {
+          user: { id: userId, name: user.name, email: user.email, avatar: user.avatar, createdAt: user.createdAt },
+          token,
+        },
+        "Demo session ready — explore freely!"
       );
     } catch (error) {
       logger.error("DemoLogin error:", error);
