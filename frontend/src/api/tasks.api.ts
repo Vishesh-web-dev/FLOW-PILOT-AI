@@ -4,8 +4,8 @@ import { ApiResponse, Task, CreateTaskForm, TaskStats } from "../types";
 export interface TaskFilters {
   status?: string;
   priority?: string;
-  projectId?: string;
-  sprintId?: string;
+  projectId?: string;    // single project, or "null" to mean no-project
+  sprintId?: string;     // single sprint, or "null" to mean no-sprint
   projectIds?: string;   // comma-separated list for multi-select filter
   sprintIds?: string;    // comma-separated list for multi-select filter
   search?: string;

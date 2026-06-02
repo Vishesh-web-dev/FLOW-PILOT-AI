@@ -43,8 +43,10 @@ export const useSocket = () => {
     });
 
     // ── activity:new ─────────────────────────────────────────────────────────
+    // Only mark stale — ai:action_executed does the actual refetch for AI flows.
+    // For non-AI activity events the query becomes stale and refetches on next focus.
     socketRef.current.on("activity:new", () => {
-      queryClient.invalidateQueries({ queryKey: ["activities"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["activities"], refetchType: "none" });
     });
 
     // ── reminder:due ─────────────────────────────────────────────────────────
@@ -70,10 +72,23 @@ export const useSocket = () => {
     });
 
     // ── ai:action_executed ────────────────────────────────────────────────────
-    // AI actions emit separate task:created/updated/deleted + activity:new events,
-    // so we only handle what those events don't cover: sprints and reminders.
+    // Single trigger for all dashboard refreshes after an AI command.
+    // activity:new and task:* handlers only mark stale, so this is the one place
+    // that causes actual API calls — exactly once per query type.
     socketRef.current.on("ai:action_executed", ({ result }: { command: string; result: AIActionResult; executed: Record<string, unknown> }) => {
       const type = result.type;
+      // Always refresh activity timeline (AI_COMMAND activity is always logged)
+      queryClient.invalidateQueries({ queryKey: ["activities"], refetchType: "active" });
+
+      const TASK_MUTATING_TYPES = [
+        "CREATE_TASK", "CREATE_TASKS", "UPDATE_TASK", "UPDATE_TASK_STATUS",
+        "DELETE_TASK", "DELETE_TASKS", "MOVE_TASKS_TO_SPRINT", "COMPLETE_TASKS",
+        "BREAKDOWN_TASK",
+      ];
+      if (TASK_MUTATING_TYPES.includes(type)) {
+        queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "active" });
+        queryClient.invalidateQueries({ queryKey: ["task-stats"], refetchType: "active" });
+      }
       if (type === "CREATE_SPRINT" || type === "MOVE_TASKS_TO_SPRINT") {
         queryClient.invalidateQueries({ queryKey: ["sprints"], refetchType: "active" });
       }
@@ -83,16 +98,16 @@ export const useSocket = () => {
     });
 
     // ── task:created / task:updated / task:deleted ───────────────────────────
-    // These are emitted by backend for every task mutation (create, update, delete,
-    // and AI actions). refetchType:"active" ensures only currently-mounted queries
-    // refetch — stale cache variants from previous page visits are just marked stale.
-    const invalidateTasksActive = () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "active" });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"], refetchType: "active" });
+    // Only mark stale — ai:action_executed does the actual refetch for AI flows.
+    // For non-AI mutations (manual create/update) the query becomes stale and
+    // refetches on next focus/mount.
+    const invalidateTasksStale = () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["task-stats"], refetchType: "none" });
     };
-    socketRef.current.on("task:created", invalidateTasksActive);
-    socketRef.current.on("task:updated", invalidateTasksActive);
-    socketRef.current.on("task:deleted", invalidateTasksActive);
+    socketRef.current.on("task:created", invalidateTasksStale);
+    socketRef.current.on("task:updated", invalidateTasksStale);
+    socketRef.current.on("task:deleted", invalidateTasksStale);
 
     // ── tasks:reordered ───────────────────────────────────────────────────────
     // KanbanBoard already has optimistic local state for its own drag-drop.

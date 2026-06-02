@@ -11,21 +11,23 @@ interface MobileKanbanProps {
   projectIds?: string;   // comma-separated
   sprintIds?: string;    // comma-separated
   noSprintOnly?: boolean;
+  noProjectOnly?: boolean;
 }
 
-export default function MobileKanban({ projectIds, sprintIds, noSprintOnly }: MobileKanbanProps) {
+export default function MobileKanban({ projectIds, sprintIds, noSprintOnly, noProjectOnly }: MobileKanbanProps) {
   const [activeCol, setActiveCol] = useState<TaskStatus>("TODO");
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>("TODO");
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly }],
+    queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly, noProjectOnly }],
     queryFn: () =>
       tasksApi.getAll({
         ...(projectIds && { projectIds }),
         ...(sprintIds && { sprintIds }),
         ...(noSprintOnly && { sprintId: "null" }),
+        ...(noProjectOnly && { projectId: "null" }),
       }),
   });
 

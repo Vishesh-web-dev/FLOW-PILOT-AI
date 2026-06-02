@@ -16,7 +16,9 @@ export default function KanbanPage() {
   });
 
   // Build API-ready params from multi-select filter state
-  const projectIdsParam = filters.projectIds.length > 0 ? filters.projectIds.join(",") : undefined;
+  const projectIdsParam = filters.projectIds.filter((p) => p !== "__none__").join(",") || undefined;
+  const noProjectOnly = filters.projectIds.includes("__none__") && filters.projectIds.length === 1;
+
   const sprintIdsParam = filters.sprintIds.length > 0
     ? filters.sprintIds.filter((s) => s !== "__none__").join(",")
     : undefined;
@@ -55,8 +57,8 @@ export default function KanbanPage() {
 
       {/* Board — DnD on desktop, tabbed list on mobile */}
       {isMobile
-        ? <MobileKanban projectIds={projectIdsParam} sprintIds={sprintIdsParam} noSprintOnly={noSprintOnly} />
-        : <KanbanBoard projectIds={projectIdsParam} sprintIds={sprintIdsParam} noSprintOnly={noSprintOnly} />
+        ? <MobileKanban projectIds={projectIdsParam} sprintIds={sprintIdsParam} noSprintOnly={noSprintOnly} noProjectOnly={noProjectOnly} />
+        : <KanbanBoard projectIds={projectIdsParam} sprintIds={sprintIdsParam} noSprintOnly={noSprintOnly} noProjectOnly={noProjectOnly} />
       }
     </div>
   );

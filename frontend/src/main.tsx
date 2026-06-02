@@ -11,7 +11,7 @@ export const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 0,           // always treat cached data as stale → socket events trigger refetch
-      gcTime: 30 * 1000,      // keep unused cache entries for 30s (prevents stale key accumulation)
+      gcTime: 0,      // keep unused cache entries for 0s (prevents stale key accumulation)
       refetchOnWindowFocus: false,
     },
     mutations: {

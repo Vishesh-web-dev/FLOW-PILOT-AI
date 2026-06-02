@@ -56,10 +56,12 @@ export const taskController = {
       });
       const memberProjectIds = memberships.map((m) => m.projectId);
 
+      // projectId="null" is a special value meaning "tasks with no project assigned"
+      const noProjectOnly = projectId === "null";
       // Multi-value filters: comma-separated lists take precedence over single values
       const projectIdFilter = projectIds
         ? projectIds.split(",").filter(Boolean)
-        : projectId
+        : projectId && !noProjectOnly
         ? [projectId]
         : null;
 
@@ -81,7 +83,14 @@ export const taskController = {
           ],
           ...(status && { status: status as any }),
           ...(priority && { priority: priority as any }),
-          ...(projectIdFilter && { projectId: { in: projectIdFilter } }),
+          // noProjectOnly: only tasks with no project
+          // projectIdFilter: filter by specific projects
+          // (mutually exclusive — noProjectOnly takes precedence)
+          ...(noProjectOnly
+            ? { projectId: null }
+            : projectIdFilter
+            ? { projectId: { in: projectIdFilter } }
+            : {}),
           ...(noSprintOnly ? { sprintId: null } : sprintIdFilter ? { sprintId: { in: sprintIdFilter } } : {}),
           ...(search && {
             OR: [

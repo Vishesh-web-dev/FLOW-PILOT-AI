@@ -74,10 +74,13 @@ export default function KanbanFilterBar({ filters, onChange }: KanbanFilterBarPr
         dropdownStyle={{ background: "#1c1c28", border: "1px solid #2a2a3a" }}
         optionFilterProp="label"
         maxTagCount={isMobile ? 2 : "responsive"}
-        options={projects.map((p) => ({
-          value: p.id,
-          label: p.name,
-        }))}
+        options={[
+          { value: "__none__", label: "No Project (unassigned)" },
+          ...projects.map((p) => ({
+            value: p.id,
+            label: p.name,
+          })),
+        ]}
         tagRender={({ label, closable, onClose }) => (
           <Tag
             closable={closable}

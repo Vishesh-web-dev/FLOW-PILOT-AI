@@ -26,6 +26,7 @@ interface KanbanBoardProps {
   projectIds?: string;
   sprintIds?: string;
   noSprintOnly?: boolean;
+  noProjectOnly?: boolean;
 }
 
 // Map of status → Task[] used as local drag state
@@ -49,7 +50,7 @@ function findContainer(columnMap: ColumnMap, taskId: string): string | null {
   return null;
 }
 
-export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly }: KanbanBoardProps) {
+export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly, noProjectOnly }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -67,12 +68,13 @@ export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly }: Kan
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly }],
+    queryKey: ["tasks", { projectIds, sprintIds, noSprintOnly, noProjectOnly }],
     queryFn: () =>
       tasksApi.getAll({
         ...(projectIds && { projectIds }),
         ...(sprintIds && { sprintIds }),
         ...(noSprintOnly && { sprintId: "null" }),
+        ...(noProjectOnly && { projectId: "null" }),
       }),
   });
 
