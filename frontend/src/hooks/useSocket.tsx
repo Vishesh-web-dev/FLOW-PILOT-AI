@@ -68,53 +68,44 @@ export const useSocket = () => {
         ),
         { duration: 10000, style: { background: "#16161d", border: "1px solid #6366f1", color: "#fff" } }
       );
-      queryClient.invalidateQueries({ queryKey: ["reminders"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["reminders"]});
     });
 
     // ── ai:action_executed ────────────────────────────────────────────────────
-    // Single trigger for all dashboard refreshes after an AI command.
-    // activity:new and task:* handlers only mark stale, so this is the one place
-    // that causes actual API calls — exactly once per query type.
+    // task:created/updated/deleted events already fire for AI task mutations and
+    // handle tasks + task-stats. We only need to trigger the activity refetch here
+    // because activity:new uses refetchType:"none" to avoid N calls per AI command.
     socketRef.current.on("ai:action_executed", ({ result }: { command: string; result: AIActionResult; executed: Record<string, unknown> }) => {
       const type = result.type;
-      // Always refresh activity timeline (AI_COMMAND activity is always logged)
-      queryClient.invalidateQueries({ queryKey: ["activities"], refetchType: "active" });
-
-      const TASK_MUTATING_TYPES = [
-        "CREATE_TASK", "CREATE_TASKS", "UPDATE_TASK", "UPDATE_TASK_STATUS",
-        "DELETE_TASK", "DELETE_TASKS", "MOVE_TASKS_TO_SPRINT", "COMPLETE_TASKS",
-        "BREAKDOWN_TASK",
-      ];
-      if (TASK_MUTATING_TYPES.includes(type)) {
-        queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "active" });
-        queryClient.invalidateQueries({ queryKey: ["task-stats"], refetchType: "active" });
-      }
+      // Single activity refetch (activity:new fires N times but uses "none")
+      queryClient.invalidateQueries({ queryKey: ["activities"]});
       if (type === "CREATE_SPRINT" || type === "MOVE_TASKS_TO_SPRINT") {
-        queryClient.invalidateQueries({ queryKey: ["sprints"], refetchType: "active" });
+        queryClient.invalidateQueries({ queryKey: ["sprints"]});
       }
       if (type === "CREATE_REMINDER") {
-        queryClient.invalidateQueries({ queryKey: ["reminders"], refetchType: "active" });
+        queryClient.invalidateQueries({ queryKey: ["reminders"]});
       }
     });
 
     // ── task:created / task:updated / task:deleted ───────────────────────────
-    // Only mark stale — ai:action_executed does the actual refetch for AI flows.
-    // For non-AI mutations (manual create/update) the query becomes stale and
-    // refetches on next focus/mount.
-    const invalidateTasksStale = () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["task-stats"], refetchType: "none" });
+    // Use refetchType:"active" so any mounted query refetches immediately.
+    // This handles both manual CRUD and AI-triggered mutations correctly.
+    // AI commands fire one task:* event per task — for a single task this is 1 call,
+    // which is acceptable. activity:new uses "none" to avoid N activity calls.
+    const invalidateTasksActive = () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"]});
+      queryClient.invalidateQueries({ queryKey: ["task-stats"]});
     };
-    socketRef.current.on("task:created", invalidateTasksStale);
-    socketRef.current.on("task:updated", invalidateTasksStale);
-    socketRef.current.on("task:deleted", invalidateTasksStale);
+    socketRef.current.on("task:created", invalidateTasksActive);
+    socketRef.current.on("task:updated", invalidateTasksActive);
+    socketRef.current.on("task:deleted", invalidateTasksActive);
 
     // ── tasks:reordered ───────────────────────────────────────────────────────
     // KanbanBoard already has optimistic local state for its own drag-drop.
     // We still mark tasks stale so other open tabs/windows refetch.
     // refetchType:"active" means only tabs that are actively showing this query refetch.
     socketRef.current.on("tasks:reordered", () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["tasks"]});
     });
 
     // ── task:assigned_to_you ─────────────────────────────────────────────────
@@ -128,30 +119,30 @@ export const useSocket = () => {
 
     // ── project:updated / deleted ────────────────────────────────────────────
     socketRef.current.on("project:updated", () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
     });
     socketRef.current.on("project:deleted", () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
     });
 
     // ── project:member_joined / removed / role_changed ───────────────────────
     socketRef.current.on("project:member_joined", (data) => {
       const d = data as { member: { user: { name: string } }; projectId: string };
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
-      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId]});
       toast.success(`👥 ${d.member.user.name} joined the project`, {
         style: { background: "#16161d", border: "1px solid #22c55e", color: "#fff" },
       });
     });
     socketRef.current.on("project:member_removed", (data) => {
       const d = data as { userId: string; projectId: string };
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
-      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId]});
     });
     socketRef.current.on("project:member_role_changed", (data) => {
       const d = data as { projectId: string };
-      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId], refetchType: "active" });
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["team-members", d.projectId]});
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
     });
 
     // ── project:invite_received ──────────────────────────────────────────────
@@ -168,12 +159,12 @@ export const useSocket = () => {
         ),
         { duration: 10000, style: { background: "#16161d", border: "1px solid #6366f1", color: "#fff" } }
       );
-      queryClient.invalidateQueries({ queryKey: ["my-invites"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["my-invites"]});
     });
 
     // ── project:removed_from_project ─────────────────────────────────────────
     socketRef.current.on("project:removed_from_project", () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["projects"]});
       toast.error("You were removed from a project", {
         style: { background: "#16161d", border: "1px solid #ef4444", color: "#fff" },
       });
@@ -181,7 +172,7 @@ export const useSocket = () => {
 
     // ── sprint:created / updated / deleted ───────────────────────────────────
     const invalidateSprintsActive = () => {
-      queryClient.invalidateQueries({ queryKey: ["sprints"], refetchType: "active" });
+      queryClient.invalidateQueries({ queryKey: ["sprints"]});
     };
     socketRef.current.on("sprint:created", invalidateSprintsActive);
     socketRef.current.on("sprint:updated", invalidateSprintsActive);
