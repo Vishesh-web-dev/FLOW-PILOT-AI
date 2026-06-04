@@ -69,14 +69,14 @@ async function callGemini(systemPrompt: string, userMessage: string): Promise<st
 
 // ─── Unified dispatcher ───────────────────────────────────────────────────────
 
-async function callAI(systemPrompt: string, userMessage: string): Promise<string> {
+export async function callAI(systemPrompt: string, userMessage: string): Promise<string> {
   if (AI_PROVIDER === "gemini") return callGemini(systemPrompt, userMessage);
   return callOpenAI(systemPrompt, userMessage);
 }
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 
-function handleAIError(error: unknown): never {
+export function handleAIError(error: unknown): never {
   logger.error("AI service error:", error);
   if (error && typeof error === "object") {
     // OpenAI specific

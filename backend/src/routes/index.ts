@@ -7,6 +7,7 @@ import aiRoutes from "./ai.routes";
 import activityRoutes from "./activity.routes";
 import reminderRoutes from "./reminder.routes";
 import teamRoutes from "./team.routes";
+import scheduleRoutes from "./schedule.routes";
 
 const router = Router();
 
@@ -29,5 +30,6 @@ router.use("/sprints", sprintRoutes);
 router.use("/ai", aiRoutes);
 router.use("/activities", activityRoutes);
 router.use("/reminders", reminderRoutes);
+router.use("/schedules", scheduleRoutes);
 
 export default router;

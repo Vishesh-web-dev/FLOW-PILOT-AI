@@ -10,6 +10,7 @@ import { env } from "./config/env";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { initializeSocket } from "./socket";
 import { startReminderJob } from "./jobs/reminder.job";
+import { startScheduleReminderJob } from "./jobs/reminder.job";
 import routes from "./routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { logger } from "./utils/logger";
@@ -97,6 +98,7 @@ const bootstrap = async (): Promise<void> => {
 
     // Start background jobs
     startReminderJob();
+    startScheduleReminderJob();
 
     // Start HTTP server
     httpServer.listen(Number(env.PORT), () => {

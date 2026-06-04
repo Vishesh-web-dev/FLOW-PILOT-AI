@@ -18,7 +18,46 @@ export type ActivityType =
   | "MEMBER_INVITED"
   | "MEMBER_JOINED"
   | "MEMBER_REMOVED"
-  | "MEMBER_ROLE_CHANGED";
+  | "MEMBER_ROLE_CHANGED"
+  | "SCHEDULE_CREATED"
+  | "SCHEDULE_UPDATED"
+  | "SCHEDULE_CHECKED";
+
+export type ScheduleType = "DAILY" | "WEEKLY" | "MONTHLY";
+
+export interface ScheduleItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  timeOfDay?: string | null;
+  category?: string | null;
+  order: number;
+  scheduleId: string;
+  createdAt: string;
+}
+
+export interface ScheduleLog {
+  id: string;
+  date: string;
+  isDone: boolean;
+  note?: string | null;
+  scheduleId: string;
+  scheduleItemId: string;
+  scheduleItem?: ScheduleItem;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  description?: string | null;
+  type: ScheduleType;
+  isActive: boolean;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  items: ScheduleItem[];
+  _count?: { items: number; logs: number };
+}
 
 export interface User {
   id: string;

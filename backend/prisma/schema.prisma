@@ -29,6 +29,7 @@ model User {
   aiCommands     AICommand[]
   sentInvites    ProjectInvite[]  @relation("InviteSender")
   receivedInvites ProjectInvite[] @relation("InviteReceiver")
+  schedules      Schedule[]
 
   @@map("users")
 }
@@ -182,6 +183,58 @@ model AICommand {
   @@map("ai_commands")
 }
 
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+
+model Schedule {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  type        ScheduleType @default(DAILY)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  userId String
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  ScheduleItem[]
+  logs   ScheduleLog[]
+
+  @@map("schedules")
+}
+
+model ScheduleItem {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  timeOfDay   String?  // e.g. "08:00"
+  category    String?  // "health", "work", "personal"
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  scheduleId String
+  schedule   Schedule      @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  logs       ScheduleLog[]
+
+  @@map("schedule_items")
+}
+
+model ScheduleLog {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  isDone    Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scheduleId     String
+  schedule       Schedule     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleItemId String
+  scheduleItem   ScheduleItem @relation(fields: [scheduleItemId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleItemId, date])
+  @@map("schedule_logs")
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -231,4 +284,13 @@ enum ActivityType {
   MEMBER_JOINED
   MEMBER_REMOVED
   MEMBER_ROLE_CHANGED
+  SCHEDULE_CREATED
+  SCHEDULE_UPDATED
+  SCHEDULE_CHECKED
+}
+
+enum ScheduleType {
+  DAILY
+  WEEKLY
+  MONTHLY
 }

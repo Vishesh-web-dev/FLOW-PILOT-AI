@@ -10,7 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  CalendarCheck,
 } from "lucide-react";
+import { useAuthStore } from "../../store/authStore";
+
+const SCHEDULER_EMAIL = "visheshshrivastava2002@gmail.com";
 
 const { Sider } = Layout;
 
@@ -21,7 +25,7 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { key: "dashboard", path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { key: "kanban", path: "/kanban", label: "Kanban Board", icon: <Kanban size={18} /> },
   { key: "sprints", path: "/sprints", label: "Sprints", icon: <Zap size={18} /> },
@@ -38,6 +42,14 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, onCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuthStore();
+
+  const navItems: NavItem[] = [
+    ...baseNavItems,
+    ...(user?.email === SCHEDULER_EMAIL
+      ? [{ key: "scheduler", path: "/scheduler", label: "Scheduler", icon: <CalendarCheck size={18} /> }]
+      : []),
+  ];
 
   const activeKey = navItems.find((item) => location.pathname.startsWith(item.path))?.key;
 

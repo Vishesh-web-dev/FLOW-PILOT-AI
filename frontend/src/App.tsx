@@ -11,10 +11,20 @@ import ActivityPage from "./pages/ActivityPage";
 import RemindersPage from "./pages/RemindersPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProfilePage from "./pages/ProfilePage";
+import SchedulerPage from "./pages/SchedulerPage";
+
+const SCHEDULER_EMAIL = "visheshshrivastava2002@gmail.com";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuthStore();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+};
+
+const SchedulerRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.email !== SCHEDULER_EMAIL) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
@@ -81,6 +91,14 @@ export default function App() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<ProfilePage />} />
+          <Route
+            path="scheduler"
+            element={
+              <SchedulerRoute>
+                <SchedulerPage />
+              </SchedulerRoute>
+            }
+          />
         </Route>
 
         {/* Fallback */}
