@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Popconfirm, TimePicker, Select, Input } from "antd";
+import dayjs from "dayjs";
 import { schedulerApi, ScheduleAnalytics } from "../api/scheduler.api";
 import { Schedule, ScheduleItem, ScheduleLog } from "../types";
 import {
@@ -75,14 +77,17 @@ function CategoryBadge({ category }: { category?: string | null }) {
 
 function ScheduleModal({
   onClose,
-  onCreated,
+  onSaved,
+  editSchedule,
 }: {
   onClose: () => void;
-  onCreated: (s: Schedule) => void;
+  onSaved: (s: Schedule) => void;
+  editSchedule?: Schedule;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
+  const isEdit = !!editSchedule;
+  const [name, setName] = useState(editSchedule?.name ?? "");
+  const [description, setDescription] = useState(editSchedule?.description ?? "");
+  const [type, setType] = useState<"DAILY" | "WEEKLY" | "MONTHLY">(editSchedule?.type ?? "DAILY");
   const [aiPrompt, setAiPrompt] = useState("");
   const [mode, setMode] = useState<"manual" | "ai">("manual");
   const [items, setItems] = useState<{ title: string; timeOfDay: string; category: string }[]>([
@@ -97,9 +102,20 @@ function ScheduleModal({
       const s = res.data.data!;
       qc.invalidateQueries({ queryKey: ["schedules"] });
       toast.success(`✅ Schedule "${s.name}" created!`);
-      onCreated(s);
+      onSaved(s);
     },
     onError: () => toast.error("Failed to create schedule"),
+  });
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: () => schedulerApi.update(editSchedule!.id, { name, description, type }),
+    onSuccess: (res) => {
+      const s = res.data.data!;
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      toast.success(`Schedule "${s.name}" updated!`);
+      onSaved(s);
+    },
+    onError: () => toast.error("Failed to update schedule"),
   });
 
   const aiMutation = useMutation({
@@ -108,15 +124,21 @@ function ScheduleModal({
       const s = res.data.data!;
       qc.invalidateQueries({ queryKey: ["schedules"] });
       toast.success(`🤖 AI created "${s.name}" with ${s.items.length} items!`);
-      onCreated(s);
+      onSaved(s);
     },
     onError: (err: Error) => toast.error(err.message || "AI generation failed"),
   });
 
+  const isPending = createMutation.isPending || updateScheduleMutation.isPending || aiMutation.isPending;
+
   const handleManualSubmit = () => {
     if (!name.trim()) { toast.error("Schedule name is required"); return; }
-    const validItems = items.filter((i) => i.title.trim());
-    createMutation.mutate({ name, description, type, items: validItems });
+    if (isEdit) {
+      updateScheduleMutation.mutate();
+    } else {
+      const validItems = items.filter((i) => i.title.trim());
+      createMutation.mutate({ name, description, type, items: validItems });
+    }
   };
 
   const handleAiSubmit = () => {
@@ -141,176 +163,311 @@ function ScheduleModal({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <h2 style={{ color: "#e2e8f0", margin: 0, fontSize: 20, fontWeight: 700 }}>
-            New Schedule
+            {isEdit ? "Edit Schedule" : "New Schedule"}
           </h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer" }}>
             <X size={20} />
           </button>
         </div>
 
-        {/* Mode toggle */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          {(["manual", "ai"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid",
-                borderColor: mode === m ? "#6366f1" : "#2a2a3a",
-                background: mode === m ? "rgba(99,102,241,0.15)" : "transparent",
-                color: mode === m ? "#a5b4fc" : "#64748b",
-                cursor: "pointer", fontWeight: 600, fontSize: 14,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              }}
-            >
-              {m === "ai" ? <><Bot size={14} /> AI Generate</> : <><Edit2 size={14} /> Manual</>}
-            </button>
-          ))}
-        </div>
+        {/* Mode toggle — create only */}
+        {!isEdit && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {(["manual", "ai"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid",
+                  borderColor: mode === m ? "#6366f1" : "#2a2a3a",
+                  background: mode === m ? "rgba(99,102,241,0.15)" : "transparent",
+                  color: mode === m ? "#a5b4fc" : "#64748b",
+                  cursor: "pointer", fontWeight: 600, fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                }}
+              >
+                {m === "ai" ? <><Bot size={14} /> AI Generate</> : <><Edit2 size={14} /> Manual</>}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {mode === "ai" ? (
+        {!isEdit && mode === "ai" ? (
           <>
-            <textarea
+            <Input.TextArea
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               placeholder="Describe your ideal schedule... e.g. 'I want a productive morning routine: wake at 6am, 30min gym, cold shower, 1hr deep work before breakfast...'"
               rows={5}
-              style={{
-                width: "100%", background: "#0d0d11", border: "1px solid #2a2a3a",
-                borderRadius: 8, color: "#e2e8f0", padding: 12, fontSize: 14,
-                resize: "vertical", fontFamily: "inherit", boxSizing: "border-box",
-              }}
+              style={{ resize: "vertical" }}
             />
             <button
               onClick={handleAiSubmit}
-              disabled={aiMutation.isPending}
+              disabled={isPending}
               style={{
                 marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 8,
                 background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 border: "none", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                opacity: aiMutation.isPending ? 0.7 : 1,
+                opacity: isPending ? 0.7 : 1,
               }}
             >
-              {aiMutation.isPending ? <><Loader2 size={16} className="animate-spin" /> Generating...</> : <><Sparkles size={16} /> Generate with AI</>}
+              {isPending ? <><Loader2 size={16} className="animate-spin" /> Generating...</> : <><Sparkles size={16} /> Generate with AI</>}
             </button>
           </>
         ) : (
           <>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Schedule name (e.g. Morning Routine)"
-              style={{
-                width: "100%", background: "#0d0d11", border: "1px solid #2a2a3a",
-                borderRadius: 8, color: "#e2e8f0", padding: "10px 12px", fontSize: 14,
-                boxSizing: "border-box", marginBottom: 10,
-              }}
+              style={{ marginBottom: 10 }}
             />
-            <input
+            <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description (optional)"
-              style={{
-                width: "100%", background: "#0d0d11", border: "1px solid #2a2a3a",
-                borderRadius: 8, color: "#e2e8f0", padding: "10px 12px", fontSize: 14,
-                boxSizing: "border-box", marginBottom: 10,
-              }}
+              style={{ marginBottom: 10 }}
             />
-            <select
+            <Select
               value={type}
-              onChange={(e) => setType(e.target.value as "DAILY" | "WEEKLY" | "MONTHLY")}
-              style={{
-                width: "100%", background: "#0d0d11", border: "1px solid #2a2a3a",
-                borderRadius: 8, color: "#e2e8f0", padding: "10px 12px", fontSize: 14,
-                boxSizing: "border-box", marginBottom: 16,
-              }}
-            >
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="MONTHLY">Monthly</option>
-            </select>
+              onChange={(val) => setType(val)}
+              style={{ width: "100%", marginBottom: 16 }}
+              options={[
+                { label: "Daily", value: "DAILY" },
+                { label: "Weekly", value: "WEEKLY" },
+                { label: "Monthly", value: "MONTHLY" },
+              ]}
+              popupMatchSelectWidth
+            />
 
-            <p style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>Schedule items</p>
-            {items.map((item, idx) => (
-              <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-                <input
-                  value={item.title}
-                  onChange={(e) => {
-                    const copy = [...items];
-                    copy[idx].title = e.target.value;
-                    setItems(copy);
-                  }}
-                  placeholder={`Item ${idx + 1} (e.g. Wake up)`}
+            {/* Items — create only */}
+            {!isEdit && (
+              <>
+                <p style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>Schedule items</p>
+                {items.map((item, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                    <Input
+                      value={item.title}
+                      onChange={(e) => {
+                        const copy = [...items];
+                        copy[idx].title = e.target.value;
+                        setItems(copy);
+                      }}
+                      placeholder={`Item ${idx + 1} (e.g. Wake up)`}
+                      style={{ flex: 1 }}
+                    />
+                    <TimePicker
+                      value={item.timeOfDay ? dayjs(item.timeOfDay, "HH:mm") : null}
+                      onChange={(val) => {
+                        const copy = [...items];
+                        copy[idx].timeOfDay = val ? val.format("HH:mm") : "";
+                        setItems(copy);
+                      }}
+                      format="HH:mm"
+                      allowClear
+                      placeholder="Time"
+                      placement="bottomLeft"
+                      popupStyle={{ zIndex: 1100 }}
+                      style={{ width: 110 }}
+                    />
+                    <Select
+                      value={item.category}
+                      onChange={(val) => {
+                        const copy = [...items];
+                        copy[idx].category = val;
+                        setItems(copy);
+                      }}
+                      style={{ width: 120 }}
+                      popupMatchSelectWidth={false}
+                      options={Object.entries(CATEGORY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
+                    />
+                    {items.length > 1 && (
+                      <button
+                        onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setItems([...items, { title: "", timeOfDay: "", category: "personal" }])}
                   style={{
-                    flex: 1, background: "#0d0d11", border: "1px solid #2a2a3a",
-                    borderRadius: 8, color: "#e2e8f0", padding: "8px 10px", fontSize: 13,
-                  }}
-                />
-                <input
-                  value={item.timeOfDay}
-                  onChange={(e) => {
-                    const copy = [...items];
-                    copy[idx].timeOfDay = e.target.value;
-                    setItems(copy);
-                  }}
-                  placeholder="08:00"
-                  type="time"
-                  style={{
-                    width: 90, background: "#0d0d11", border: "1px solid #2a2a3a",
-                    borderRadius: 8, color: "#e2e8f0", padding: "8px 8px", fontSize: 13,
-                  }}
-                />
-                <select
-                  value={item.category}
-                  onChange={(e) => {
-                    const copy = [...items];
-                    copy[idx].category = e.target.value;
-                    setItems(copy);
-                  }}
-                  style={{
-                    width: 110, background: "#0d0d11", border: "1px solid #2a2a3a",
-                    borderRadius: 8, color: "#e2e8f0", padding: "8px 6px", fontSize: 12,
+                    background: "none", border: "1px dashed #2a2a3a", color: "#64748b",
+                    borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, width: "100%",
+                    marginBottom: 16,
                   }}
                 >
-                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-                {items.length > 1 && (
-                  <button
-                    onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                    style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              onClick={() => setItems([...items, { title: "", timeOfDay: "", category: "personal" }])}
-              style={{
-                background: "none", border: "1px dashed #2a2a3a", color: "#64748b",
-                borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, width: "100%",
-                marginBottom: 16,
-              }}
-            >
-              + Add item
-            </button>
+                  + Add item
+                </button>
+              </>
+            )}
             <button
               onClick={handleManualSubmit}
-              disabled={createMutation.isPending}
+              disabled={isPending}
               style={{
                 width: "100%", padding: "12px 0", borderRadius: 8,
                 background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 border: "none", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer",
-                opacity: createMutation.isPending ? 0.7 : 1,
+                opacity: isPending ? 0.7 : 1,
               }}
             >
-              {createMutation.isPending ? "Creating..." : "Create Schedule"}
+              {isPending
+                ? (isEdit ? "Saving..." : "Creating...")
+                : (isEdit ? "Save Changes" : "Create Schedule")}
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit Item Modal ──────────────────────────────────────────────────────────
+
+function EditItemModal({
+  scheduleId,
+  item,
+  onClose,
+}: {
+  scheduleId: string;
+  item: ScheduleItem;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [description, setDescription] = useState(item.description ?? "");
+  const [timeOfDay, setTimeOfDay] = useState(item.timeOfDay ?? "");
+  const [category, setCategory] = useState(item.category ?? "personal");
+
+  const qc = useQueryClient();
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      schedulerApi.updateItem(scheduleId, item.id, { title, description: description || null, timeOfDay: timeOfDay || null, category }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      toast.success("Item updated");
+      onClose();
+    },
+    onError: () => toast.error("Failed to update item"),
+  });
+
+  const handleSubmit = () => {
+    if (!title.trim()) { toast.error("Title is required"); return; }
+    updateMutation.mutate();
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1100,
+        background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          background: "#13131a", border: "1px solid #2a2a3a", borderRadius: 16,
+          width: "100%", maxWidth: 460, padding: 28,
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h2 style={{ color: "#e2e8f0", margin: 0, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+            <Edit2 size={18} color="#6366f1" /> Edit Item
+          </h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Fields */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ color: "#64748b", fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>
+              Title <span style={{ color: "#ef4444" }}>*</span>
+            </label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Item title"
+            />
+          </div>
+
+          <div>
+            <label style={{ color: "#64748b", fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>
+              Description
+            </label>
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description"
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: "#64748b", fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                Time
+              </label>
+              <TimePicker
+                value={timeOfDay ? dayjs(timeOfDay, "HH:mm") : null}
+                onChange={(val) => setTimeOfDay(val ? val.format("HH:mm") : "")}
+                format="HH:mm"
+                allowClear
+                placeholder="HH:MM"
+                placement="bottomLeft"
+                popupStyle={{ zIndex: 1200 }}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: "#64748b", fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                Category
+              </label>
+              <Select
+                value={category}
+                onChange={(val) => setCategory(val)}
+                style={{ width: "100%" }}
+                popupMatchSelectWidth={false}
+                dropdownStyle={{ zIndex: 1200 }}
+                options={Object.entries(CATEGORY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "11px 0", borderRadius: 8,
+              background: "transparent", border: "1px solid #2a2a3a",
+              color: "#64748b", fontWeight: 600, fontSize: 14, cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={updateMutation.isPending}
+            style={{
+              flex: 2, padding: "11px 0", borderRadius: 8,
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
+              opacity: updateMutation.isPending ? 0.7 : 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            {updateMutation.isPending
+              ? <><Loader2 size={14} className="animate-spin" /> Saving...</>
+              : "Save Changes"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -320,6 +477,7 @@ function ScheduleModal({
 
 function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   const [dateStr, setDateStr] = useState(todayStr());
+  const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
   const qc = useQueryClient();
 
   const logsQuery = useQuery({
@@ -448,11 +606,31 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
                     </span>
                   )}
                   <CategoryBadge category={item.category} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingItem(item); }}
+                    title="Edit item"
+                    style={{
+                      background: "none", border: "none", color: "#4b5563",
+                      cursor: "pointer", padding: "2px 4px",
+                      display: "flex", alignItems: "center", flexShrink: 0,
+                      borderRadius: 4,
+                    }}
+                  >
+                    <Edit2 size={12} />
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {editingItem && (
+        <EditItemModal
+          scheduleId={schedule.id}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+        />
       )}
     </div>
   );
@@ -523,19 +701,33 @@ function AnalyticsView({ schedule }: { schedule: Schedule }) {
           {/* Daily bar chart (simple CSS bars) */}
           <div style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 12, padding: 16, marginBottom: 20 }}>
             <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 12px", fontWeight: 600 }}>Daily Completion Rate</p>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 80, overflowX: "auto" }}>
-              {data.dailyStats.slice(-days).map((day) => (
-                <div
-                  key={day.date}
-                  title={`${day.date}: ${day.done}/${day.total} (${day.rate}%)`}
-                  style={{
-                    flex: "0 0 auto", minWidth: days <= 14 ? 24 : 12,
-                    height: `${Math.max(day.rate, 4)}%`,
-                    background: day.rate === 100 ? "#10b981" : day.rate > 50 ? "#6366f1" : "#2a2a3a",
-                    borderRadius: "2px 2px 0 0", transition: "height 0.3s",
-                  }}
-                />
-              ))}
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80, overflowX: "auto", paddingBottom: 2 }}>
+              {data.dailyStats.slice(-days).map((day) => {
+                const hasData = day.total > 0;
+                const barHeight = hasData ? `${Math.max(day.rate, 8)}%` : "4px";
+                const barColor = !hasData
+                  ? "#2d2d3f"
+                  : day.rate === 100 ? "#10b981"
+                  : day.rate > 50 ? "#6366f1"
+                  : "#4b5563";
+                const barWidth = days <= 14 ? 24 : days <= 30 ? 12 : 8;
+                return (
+                  <div
+                    key={day.date}
+                    title={`${day.date}: ${day.done}/${day.total} (${day.rate}%)`}
+                    style={{
+                      flex: "0 0 auto",
+                      width: barWidth,
+                      minWidth: barWidth,
+                      height: barHeight,
+                      background: barColor,
+                      borderRadius: "2px 2px 0 0",
+                      transition: "height 0.3s",
+                      opacity: hasData ? 1 : 0.4,
+                    }}
+                  />
+                );
+              })}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ color: "#4b5563", fontSize: 11 }}>{data.dailyStats[0]?.date}</span>
@@ -579,6 +771,7 @@ function AnalyticsView({ schedule }: { schedule: Schedule }) {
 
 export default function SchedulerPage() {
   const [showModal, setShowModal] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"checkin" | "analytics">("checkin");
   const qc = useQueryClient();
@@ -730,20 +923,36 @@ export default function SchedulerPage() {
                     <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{selected.description}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Delete "${selected.name}"?`)) {
-                      deleteMutation.mutate(selected.id);
-                    }
-                  }}
-                  style={{
-                    background: "none", border: "1px solid #2a2a3a", borderRadius: 8,
-                    color: "#ef4444", cursor: "pointer", padding: "6px 10px",
-                    display: "flex", alignItems: "center", gap: 4, fontSize: 13,
-                  }}
-                >
-                  <Trash2 size={13} /> Delete
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setEditingSchedule(selected)}
+                    style={{
+                      background: "none", border: "1px solid #2a2a3a", borderRadius: 8,
+                      color: "#a5b4fc", cursor: "pointer", padding: "6px 10px",
+                      display: "flex", alignItems: "center", gap: 4, fontSize: 13,
+                    }}
+                  >
+                    <Edit2 size={13} /> Edit
+                  </button>
+                  <Popconfirm
+                    title={`Delete "${selected.name}"?`}
+                    description="This will permanently remove the schedule and all its logs."
+                    onConfirm={() => deleteMutation.mutate(selected.id)}
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                    cancelText="Cancel"
+                  >
+                    <button
+                      style={{
+                        background: "none", border: "1px solid #2a2a3a", borderRadius: 8,
+                        color: "#ef4444", cursor: "pointer", padding: "6px 10px",
+                        display: "flex", alignItems: "center", gap: 4, fontSize: 13,
+                      }}
+                    >
+                      <Trash2 size={13} /> Delete
+                    </button>
+                  </Popconfirm>
+                </div>
               </div>
 
               {/* Tabs */}
@@ -784,10 +993,11 @@ export default function SchedulerPage() {
         </div>
       )}
 
-      {showModal && (
+      {(showModal || editingSchedule) && (
         <ScheduleModal
-          onClose={() => setShowModal(false)}
-          onCreated={(s) => { setSelectedId(s.id); setShowModal(false); }}
+          onClose={() => { setShowModal(false); setEditingSchedule(null); }}
+          onSaved={(s) => { setSelectedId(s.id); setShowModal(false); setEditingSchedule(null); }}
+          editSchedule={editingSchedule ?? undefined}
         />
       )}
     </div>
