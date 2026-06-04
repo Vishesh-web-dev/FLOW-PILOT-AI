@@ -17,13 +17,25 @@ export interface AnalyticsItemStats {
   rate: number;
 }
 
+export interface AnalyticsDowStats {
+  name: string;
+  done: number;
+  total: number;
+  rate: number;
+}
+
 export interface ScheduleAnalytics {
   overallRate: number;
   totalExpected: number;
   totalDone: number;
   days: number;
+  from: string;
+  to: string;
+  currentStreak: number;
+  longestStreak: number;
   dailyStats: AnalyticsDayStats[];
   itemStats: AnalyticsItemStats[];
+  dowStats: AnalyticsDowStats[];
 }
 
 // ── Schedules ─────────────────────────────────────────────────────────────────
@@ -69,9 +81,18 @@ export const schedulerApi = {
   toggleLog: (scheduleId: string, data: { itemId: string; date: string; isDone: boolean }) =>
     apiClient.post<ApiResponse<ScheduleLog>>(`/schedules/${scheduleId}/logs/toggle`, data),
 
-  // Analytics
-  getAnalytics: (scheduleId: string, days = 30) =>
-    apiClient.get<ApiResponse<ScheduleAnalytics>>(`/schedules/${scheduleId}/analytics?days=${days}`),
+  // Analytics — ?from=YYYY-MM-DD&to=YYYY-MM-DD  OR  ?days=N  (always sends &tz=)
+  getAnalytics: (scheduleId: string, params: { days?: number; from?: string; to?: string; tz?: string } = { days: 30 }) => {
+    // Always include the browser's local timezone so the backend can compute
+    // "today" correctly and align DOW labels with the user's locale
+    const tz = params.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const rangeQ = params.from && params.to
+      ? `from=${params.from}&to=${params.to}`
+      : `days=${params.days ?? 30}`;
+    return apiClient.get<ApiResponse<ScheduleAnalytics>>(
+      `/schedules/${scheduleId}/analytics?${rangeQ}&tz=${encodeURIComponent(tz)}`
+    );
+  },
 
   // AI generate
   aiGenerate: (prompt: string) =>

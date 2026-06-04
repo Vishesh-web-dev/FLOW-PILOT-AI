@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Popconfirm, TimePicker, Select, Input } from "antd";
+import { Popconfirm, TimePicker, Select, Input, DatePicker } from "antd";
 import dayjs from "dayjs";
 import { schedulerApi, ScheduleAnalytics } from "../api/scheduler.api";
-import { Schedule, ScheduleItem, ScheduleLog } from "../types";
+import { Schedule, ScheduleItem, ScheduleLog, ScheduleType } from "../types";
 import {
   CalendarCheck,
   Plus,
@@ -22,13 +22,54 @@ import {
   Loader2,
   TrendingUp,
   Target,
+  Flame,
+  Zap,
+  Activity,
+  CalendarRange,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const toDateStr = (d: Date) => d.toISOString().split("T")[0];
+// Always use the browser's local timezone so dates match what the user sees
+const getUserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// Format a Date as "YYYY-MM-DD" in the user's local timezone (not UTC)
+const toDateStr = (d: Date): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: getUserTz() }).format(d);
+
+// "YYYY-MM-DD" for today in local timezone
 const todayStr = () => toDateStr(new Date());
+
+// ── Schedule type-aware period helpers ───────────────────────────────────────
+
+function getPeriodKey(type: ScheduleType, d: Date): string {
+  if (type === "MONTHLY") {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+  if (type === "WEEKLY") {
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+    const mon = new Date(d);
+    mon.setDate(diff);
+    mon.setHours(0, 0, 0, 0);
+    return toDateStr(mon);
+  }
+  return toDateStr(d);
+}
+
+function getPeriodLabel(type: ScheduleType, key: string): string {
+  const d = new Date(key + "T12:00:00");
+  if (type === "MONTHLY") {
+    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+  if (type === "WEEKLY") {
+    const end = new Date(d);
+    end.setDate(d.getDate() + 6);
+    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  }
+  return "";
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   health: "#10b981",
@@ -476,23 +517,38 @@ function EditItemModal({
 // ─── Daily Check-in View ──────────────────────────────────────────────────────
 
 function DailyCheckIn({ schedule }: { schedule: Schedule }) {
-  const [dateStr, setDateStr] = useState(todayStr());
+  const currentPeriodKey = getPeriodKey(schedule.type, new Date());
+  const [periodKey, setPeriodKey] = useState(currentPeriodKey);
   const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
   const qc = useQueryClient();
 
+  const isCurrentPeriod = periodKey === currentPeriodKey;
+
   const logsQuery = useQuery({
-    queryKey: ["schedule-logs", schedule.id, dateStr],
-    queryFn: () => schedulerApi.getLogs(schedule.id, dateStr),
+    queryKey: ["schedule-logs", schedule.id, periodKey],
+    queryFn: () => schedulerApi.getLogs(schedule.id, periodKey),
     select: (res) => res.data.data ?? [],
   });
 
   const toggleMutation = useMutation({
     mutationFn: (data: { itemId: string; isDone: boolean }) =>
-      schedulerApi.toggleLog(schedule.id, { itemId: data.itemId, date: dateStr, isDone: data.isDone }),
+      schedulerApi.toggleLog(schedule.id, { itemId: data.itemId, date: periodKey, isDone: data.isDone }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedule-logs", schedule.id, dateStr] });
+      qc.invalidateQueries({ queryKey: ["schedule-logs", schedule.id, periodKey] });
+      qc.invalidateQueries({ queryKey: ["schedule-item-stats", schedule.id] });
     },
     onError: () => toast.error("Failed to update"),
+  });
+
+  // All-time per-item stats: use a far-past from so logs before createdAt
+  // (e.g. back-filled days) are also captured. Cache key uses today's date
+  // so invalidation on toggle + day-change both work.
+  const allTimeFrom = "2000-01-01";
+  const allTimeTo = todayStr();
+  const itemStatsQuery = useQuery({
+    queryKey: ["schedule-item-stats", schedule.id, allTimeTo],
+    queryFn: () => schedulerApi.getAnalytics(schedule.id, { from: allTimeFrom, to: allTimeTo }),
+    select: (res) => Object.fromEntries((res.data.data?.itemStats ?? []).map((s) => [s.id, s])),
   });
 
   const logs = logsQuery.data ?? [];
@@ -503,41 +559,63 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   const totalCount = schedule.items.length;
   const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
-  const prevDay = () => {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() - 1);
-    setDateStr(toDateStr(d));
+  const movePeriod = (dir: number) => {
+    const d = new Date(periodKey + "T12:00:00");
+    if (schedule.type === "MONTHLY") d.setMonth(d.getMonth() + dir);
+    else if (schedule.type === "WEEKLY") d.setDate(d.getDate() + dir * 7);
+    else d.setDate(d.getDate() + dir);
+    setPeriodKey(getPeriodKey(schedule.type, d));
   };
-  const nextDay = () => {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() + 1);
-    setDateStr(toDateStr(d));
+
+  const periodDisplayLabel = () => {
+    if (schedule.type === "DAILY") {
+      if (isCurrentPeriod) return "Today";
+      return new Date(periodKey + "T12:00:00").toLocaleDateString("en-US", {
+        weekday: "long", month: "short", day: "numeric",
+      });
+    }
+    if (schedule.type === "MONTHLY") return getPeriodLabel("MONTHLY", periodKey);
+    if (schedule.type === "WEEKLY") return isCurrentPeriod ? "This Week" : getPeriodLabel("WEEKLY", periodKey);
+    return periodKey;
   };
-  const isToday = dateStr === todayStr();
+
+  const periodSubLabel = () => {
+    if (schedule.type === "DAILY") {
+      // Show a human-readable date as sub-label (not raw YYYY-MM-DD)
+      const d = new Date(periodKey + "T12:00:00");
+      return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    }
+    if (schedule.type === "WEEKLY") return getPeriodLabel("WEEKLY", periodKey);
+    return "";
+  };
+
+  const completionUnit = schedule.type === "MONTHLY" ? "mo" : schedule.type === "WEEKLY" ? "wk" : "d";
 
   return (
     <div>
-      {/* Date navigator */}
+      {/* Period navigator */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, justifyContent: "center" }}>
         <button
-          onClick={prevDay}
+          onClick={() => movePeriod(-1)}
           style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer" }}
         >
           <ChevronLeft size={16} />
         </button>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", minWidth: 160 }}>
           <div style={{ color: "#e2e8f0", fontWeight: 600, fontSize: 15 }}>
-            {isToday ? "Today" : new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+            {periodDisplayLabel()}
           </div>
-          <div style={{ color: "#64748b", fontSize: 12 }}>{dateStr}</div>
+          {periodSubLabel() && (
+            <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{periodSubLabel()}</div>
+          )}
         </div>
         <button
-          onClick={nextDay}
-          disabled={isToday}
+          onClick={() => movePeriod(1)}
+          disabled={isCurrentPeriod}
           style={{
             background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 8,
-            padding: "6px 10px", color: isToday ? "#2a2a3a" : "#94a3b8",
-            cursor: isToday ? "not-allowed" : "pointer",
+            padding: "6px 10px", color: isCurrentPeriod ? "#2a2a3a" : "#94a3b8",
+            cursor: isCurrentPeriod ? "not-allowed" : "pointer",
           }}
         >
           <ChevronRight size={16} />
@@ -572,6 +650,7 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
           {schedule.items.map((item) => {
             const log = getLog(item.id);
             const isDone = log?.isDone ?? false;
+            const stats = itemStatsQuery.data?.[item.id];
             return (
               <div
                 key={item.id}
@@ -587,7 +666,7 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
                 {isDone
                   ? <CheckCircle2 size={20} color="#10b981" />
                   : <Circle size={20} color="#4b5563" />}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
                     color: isDone ? "#64748b" : "#e2e8f0",
                     textDecoration: isDone ? "line-through" : "none",
@@ -597,6 +676,18 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
                   </div>
                   {item.description && (
                     <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{item.description}</div>
+                  )}
+                  {stats && stats.doneDays > 0 && (
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, marginTop: 5,
+                      background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)",
+                      borderRadius: 6, padding: "2px 7px",
+                    }}>
+                      <span style={{ color: "#10b981", fontSize: 10, fontWeight: 700 }}>✓</span>
+                      <span style={{ color: "#94a3b8", fontSize: 11 }}>
+                        {stats.doneDays}<span style={{ color: "#4b5563" }}>/{stats.totalDays}{completionUnit}</span>
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
@@ -639,120 +730,210 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
 // ─── Analytics View ───────────────────────────────────────────────────────────
 
 function AnalyticsView({ schedule }: { schedule: Schedule }) {
-  const [days, setDays] = useState(30);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
+    dayjs().subtract(29, "day"),
+    dayjs(),
+  ]);
+  const [activePreset, setActivePreset] = useState<number | null>(30);
+
+  const fromStr = dateRange[0].format("YYYY-MM-DD");
+  const toStr   = dateRange[1].format("YYYY-MM-DD");
 
   const analyticsQuery = useQuery({
-    queryKey: ["schedule-analytics", schedule.id, days],
-    queryFn: () => schedulerApi.getAnalytics(schedule.id, days),
-    select: (res) => res.data.data as ScheduleAnalytics,
+    queryKey: ["schedule-analytics", schedule.id, fromStr, toStr],
+    queryFn:  () => schedulerApi.getAnalytics(schedule.id, { from: fromStr, to: toStr }),
+    select:   (res) => res.data.data as ScheduleAnalytics,
   });
 
+  const setPreset = (days: number) => {
+    setActivePreset(days);
+    setDateRange([dayjs().subtract(days - 1, "day"), dayjs()]);
+  };
+
   const data = analyticsQuery.data;
+  const numDays = data?.days ?? 30;
 
   return (
     <div>
-      {/* Days filter */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {[7, 14, 30, 90].map((d) => (
-          <button
-            key={d}
-            onClick={() => setDays(d)}
-            style={{
-              padding: "6px 14px", borderRadius: 8, border: "1px solid",
-              borderColor: days === d ? "#6366f1" : "#2a2a3a",
-              background: days === d ? "rgba(99,102,241,0.15)" : "transparent",
-              color: days === d ? "#a5b4fc" : "#64748b",
-              cursor: "pointer", fontSize: 13, fontWeight: 600,
-            }}
-          >
-            {d}d
-          </button>
-        ))}
+      {/* ── Date range controls ── */}
+      <div style={{ marginBottom: 20 }}>
+        {/* Quick preset pills */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {[
+            { label: "7d", days: 7 },
+            { label: "30d", days: 30 },
+            { label: "90d", days: 90 },
+            { label: "6m", days: 180 },
+            { label: "1y", days: 365 },
+          ].map((p) => (
+            <button
+              key={p.days}
+              onClick={() => setPreset(p.days)}
+              style={{
+                padding: "4px 12px", borderRadius: 6, border: "1px solid",
+                borderColor: activePreset === p.days ? "#6366f1" : "#2a2a3a",
+                background: activePreset === p.days ? "rgba(99,102,241,0.18)" : "transparent",
+                color: activePreset === p.days ? "#a5b4fc" : "#64748b",
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {/* Date range picker */}
+        <DatePicker.RangePicker
+          value={dateRange}
+          onChange={(vals) => {
+            if (vals && vals[0] && vals[1]) {
+              setActivePreset(null);
+              setDateRange([vals[0], vals[1]]);
+            }
+          }}
+          disabledDate={(d) => d.isAfter(dayjs())}
+          allowClear={false}
+          style={{
+            background: "#1c1c28", border: "1px solid #2a2a3a",
+            borderRadius: 8, width: "100%",
+          }}
+          popupStyle={{ zIndex: 1200 }}
+        />
       </div>
 
       {analyticsQuery.isLoading ? (
         <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>
           <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          Loading analytics...
+          Loading analytics…
         </div>
       ) : !data ? null : (
         <>
-          {/* Summary cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+          {/* ── Summary cards ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 20 }}>
             {[
-              { label: "Overall Rate", value: `${data.overallRate}%`, icon: <Target size={18} />, color: "#6366f1" },
-              { label: "Completed", value: data.totalDone, icon: <CheckCircle2 size={18} />, color: "#10b981" },
-              { label: "Days Tracked", value: data.days, icon: <TrendingUp size={18} />, color: "#f59e0b" },
+              { label: "Overall Rate",     value: `${data.overallRate}%`,    icon: <Target size={17} />,    color: "#6366f1" },
+              { label: "Total Done",       value: data.totalDone,             icon: <CheckCircle2 size={17} />, color: "#10b981" },
+              { label: "Days Tracked",     value: data.days,                  icon: <Activity size={17} />,  color: "#f59e0b" },
+              { label: "Consistency",      value: data.totalExpected > 0
+                  ? `${Math.round((data.totalDone / data.totalExpected) * 100)}%`
+                  : "—",                                                        icon: <TrendingUp size={17} />, color: "#3b82f6" },
+              { label: "Current Streak 🔥", value: `${data.currentStreak}d`, icon: <Flame size={17} />,     color: "#f97316" },
+              { label: "Longest Streak ⚡", value: `${data.longestStreak}d`, icon: <Zap size={17} />,       color: "#a78bfa" },
             ].map((card) => (
               <div
                 key={card.label}
                 style={{
                   background: "#1c1c28", border: "1px solid #2a2a3a",
-                  borderRadius: 12, padding: 16, textAlign: "center",
+                  borderRadius: 10, padding: "12px 14px",
+                  display: "flex", alignItems: "center", gap: 10,
                 }}
               >
-                <div style={{ color: card.color, marginBottom: 8 }}>{card.icon}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "#e2e8f0" }}>{card.value}</div>
-                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{card.label}</div>
+                <div style={{ color: card.color, flexShrink: 0 }}>{card.icon}</div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#e2e8f0", lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{card.label}</div>
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Daily bar chart (simple CSS bars) */}
-          <div style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 12, padding: 16, marginBottom: 20 }}>
-            <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 12px", fontWeight: 600 }}>Daily Completion Rate</p>
+          {/* ── Daily completion chart ── */}
+          <div style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 12px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <CalendarRange size={14} /> Daily Completion
+            </p>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80, overflowX: "auto", paddingBottom: 2 }}>
-              {data.dailyStats.slice(-days).map((day) => {
+              {data.dailyStats.map((day) => {
                 const hasData = day.total > 0;
                 const barHeight = hasData ? `${Math.max(day.rate, 8)}%` : "4px";
-                const barColor = !hasData
-                  ? "#2d2d3f"
+                const barColor = !hasData ? "#2d2d3f"
                   : day.rate === 100 ? "#10b981"
-                  : day.rate > 50 ? "#6366f1"
-                  : "#4b5563";
-                const barWidth = days <= 14 ? 24 : days <= 30 ? 12 : 8;
+                  : day.rate > 66 ? "#6366f1"
+                  : day.rate > 33 ? "#f59e0b"
+                  : "#ef4444";
+                const barWidth = numDays <= 14 ? 24 : numDays <= 30 ? 12 : numDays <= 90 ? 8 : 4;
                 return (
                   <div
                     key={day.date}
                     title={`${day.date}: ${day.done}/${day.total} (${day.rate}%)`}
                     style={{
-                      flex: "0 0 auto",
-                      width: barWidth,
-                      minWidth: barWidth,
-                      height: barHeight,
-                      background: barColor,
-                      borderRadius: "2px 2px 0 0",
-                      transition: "height 0.3s",
-                      opacity: hasData ? 1 : 0.4,
+                      flex: "0 0 auto", width: barWidth, minWidth: barWidth,
+                      height: barHeight, background: barColor,
+                      borderRadius: "2px 2px 0 0", transition: "height 0.3s",
+                      opacity: hasData ? 1 : 0.35,
                     }}
                   />
                 );
               })}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-              <span style={{ color: "#4b5563", fontSize: 11 }}>{data.dailyStats[0]?.date}</span>
-              <span style={{ color: "#4b5563", fontSize: 11 }}>{data.dailyStats[data.dailyStats.length - 1]?.date}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, gap: 6 }}>
+              <span style={{ color: "#4b5563", fontSize: 10 }}>{data.from}</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {[["#10b981","100%"],["#6366f1",">66%"],["#f59e0b",">33%"],["#ef4444","<33%"]].map(([c,l]) => (
+                  <span key={l} style={{ fontSize: 9, color: "#4b5563", display: "flex", alignItems: "center", gap: 3 }}>
+                    <span style={{ width: 8, height: 8, background: c, borderRadius: 2, display: "inline-block" }} />{l}
+                  </span>
+                ))}
+              </div>
+              <span style={{ color: "#4b5563", fontSize: 10 }}>{data.to}</span>
             </div>
           </div>
 
-          {/* Per-item stats */}
+          {/* ── Day-of-week breakdown ── */}
+          <div style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 14px", fontWeight: 600 }}>Day-of-Week Performance</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {data.dowStats.map((d) => (
+                <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ color: "#64748b", fontSize: 12, width: 30, flexShrink: 0 }}>{d.name}</span>
+                  <div style={{ flex: 1, height: 8, background: "#0d0d11", borderRadius: 999, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%", borderRadius: 999, transition: "width 0.4s",
+                        background: d.rate === 100 ? "#10b981"
+                          : d.rate > 66 ? "#6366f1"
+                          : d.rate > 33 ? "#f59e0b"
+                          : d.total === 0 ? "#1c1c28" : "#ef4444",
+                        width: `${d.rate}%`,
+                      }}
+                    />
+                  </div>
+                  <span style={{ color: d.total === 0 ? "#3a3a4a" : "#94a3b8", fontSize: 12, width: 36, textAlign: "right", flexShrink: 0 }}>
+                    {d.total === 0 ? "—" : `${d.rate}%`}
+                  </span>
+                  {d.total > 0 && (
+                    <span style={{ color: "#4b5563", fontSize: 10, flexShrink: 0 }}>
+                      {d.done}/{d.total}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Per-item stats ── */}
           <div style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 12, padding: 16 }}>
             <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 12px", fontWeight: 600 }}>Item Completion Rates</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {data.itemStats.sort((a, b) => b.rate - a.rate).map((item) => (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {[...data.itemStats].sort((a, b) => b.rate - a.rate).map((item) => (
                 <div key={item.id}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
-                    <span style={{ color: "#e2e8f0", fontSize: 13 }}>{item.title}</span>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, alignItems: "center" }}>
+                    <span style={{ color: "#e2e8f0", fontSize: 13, flex: 1, marginRight: 8 }}>{item.title}</span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                       <CategoryBadge category={item.category} />
-                      <span style={{ color: "#6366f1", fontWeight: 700, fontSize: 13 }}>{item.rate}%</span>
+                      <span style={{ color: "#64748b", fontSize: 11 }}>{item.doneDays}/{item.totalDays}d</span>
+                      <span style={{
+                        color: item.rate >= 80 ? "#10b981" : item.rate >= 50 ? "#6366f1" : "#f59e0b",
+                        fontWeight: 700, fontSize: 13, minWidth: 36, textAlign: "right",
+                      }}>{item.rate}%</span>
                     </div>
                   </div>
-                  <div style={{ height: 4, background: "#0d0d11", borderRadius: 999, overflow: "hidden" }}>
+                  <div style={{ height: 5, background: "#0d0d11", borderRadius: 999, overflow: "hidden" }}>
                     <div
                       style={{
                         height: "100%", borderRadius: 999,
-                        background: item.rate === 100 ? "#10b981" : "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                        background: item.rate === 100 ? "#10b981"
+                          : item.rate >= 80 ? "linear-gradient(90deg,#10b981,#6366f1)"
+                          : "linear-gradient(90deg,#6366f1,#8b5cf6)",
                         width: `${item.rate}%`, transition: "width 0.4s",
                       }}
                     />

@@ -262,12 +262,11 @@ export const scheduleController = {
   },
 
   // ── GET /api/schedules/:id/analytics ────────────────────────────────────────
-  // Query: ?days=30
+  // Query: ?days=30  OR  ?from=YYYY-MM-DD&to=YYYY-MM-DD  (both accept &tz=IANA_timezone)
   async getAnalytics(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { id } = req.params;
-      const days = parseInt((req.query.days as string) || "30", 10);
 
       const existing = await prisma.schedule.findFirst({
         where: { id, userId },
@@ -275,65 +274,138 @@ export const scheduleController = {
       });
       if (!existing) { sendNotFound(res, "Schedule not found"); return; }
 
-      const from = new Date();
-      from.setDate(from.getDate() - days + 1);
-      from.setHours(0, 0, 0, 0);
+      // User's local timezone (for "today" computation and DOW labeling)
+      const tz = (req.query.tz as string) || "UTC";
 
+      // ── Date range resolution ─────────────────────────────────────────────
+      // All date keys are UTC midnight strings (YYYY-MM-DD) matching how logs
+      // are stored: frontend sends the local date string, backend stores as UTC midnight.
+      let fromStr: string;
+      let toStr: string;
+
+      if (req.query.from && req.query.to) {
+        fromStr = req.query.from as string;  // e.g. "2026-06-01"
+        toStr   = req.query.to   as string;  // e.g. "2026-06-04"
+      } else {
+        // Compute "today" in the user's timezone so the date is correct regardless
+        // of server timezone or UTC offset
+        const now = new Date();
+        toStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now); // YYYY-MM-DD
+        const dayCount = parseInt((req.query.days as string) || "30", 10);
+        // Subtract (dayCount - 1) UTC days from today's midnight
+        const fromDate = new Date(toStr + "T00:00:00.000Z");
+        fromDate.setUTCDate(fromDate.getUTCDate() - dayCount + 1);
+        fromStr = fromDate.toISOString().split("T")[0];
+      }
+
+      // Exact day count using UTC midnight-to-midnight (no floating point error)
+      const fromMidnight = new Date(fromStr + "T00:00:00.000Z");
+      const toMidnight   = new Date(toStr   + "T00:00:00.000Z");
+      const days = Math.round((toMidnight.getTime() - fromMidnight.getTime()) / 86400000) + 1;
+
+      const from = fromMidnight;
+      const to   = new Date(toStr + "T23:59:59.999Z");
+
+      // ── Fetch logs ────────────────────────────────────────────────────────
       const logs = await prisma.scheduleLog.findMany({
-        where: { scheduleId: id, date: { gte: from } },
+        where: { scheduleId: id, date: { gte: from, lte: to } },
         include: { scheduleItem: true },
         orderBy: { date: "asc" },
       });
 
-      // Build daily summary
+      // ── Build daily map (UTC date keys) ───────────────────────────────────
       const dailyMap: Record<string, { total: number; done: number }> = {};
       for (let i = 0; i < days; i++) {
-        const d = new Date(from);
-        d.setDate(d.getDate() + i);
-        const key = d.toISOString().split("T")[0];
-        dailyMap[key] = { total: existing.items.length, done: 0 };
+        const d = new Date(fromStr + "T00:00:00.000Z");
+        d.setUTCDate(d.getUTCDate() + i);
+        dailyMap[d.toISOString().split("T")[0]] = { total: existing.items.length, done: 0 };
       }
       for (const log of logs) {
         const key = (log.date as Date).toISOString().split("T")[0];
         if (dailyMap[key] && log.isDone) dailyMap[key].done++;
       }
 
-      const dailyStats = Object.entries(dailyMap).map(([date, v]) => ({
-        date,
-        total: v.total,
-        done: v.done,
-        rate: v.total > 0 ? Math.round((v.done / v.total) * 100) : 0,
-      }));
+      const dailyStats = Object.entries(dailyMap)
+        .map(([date, v]) => ({
+          date, total: v.total, done: v.done,
+          rate: v.total > 0 ? Math.round((v.done / v.total) * 100) : 0,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
-      // Per-item completion rate
+      // ── Per-item stats: totalDays from item's first completion → toStr ────
       const itemStats = existing.items.map((item) => {
-        const itemLogs = logs.filter((l) => l.scheduleItemId === item.id);
-        const done = itemLogs.filter((l) => l.isDone).length;
+        const doneLogs = logs
+          .filter((l) => l.scheduleItemId === item.id && l.isDone)
+          .sort((a, b) => (a.date as Date).getTime() - (b.date as Date).getTime());
+
+        if (doneLogs.length === 0) {
+          return { id: item.id, title: item.title, category: item.category, totalDays: 0, doneDays: 0, rate: 0 };
+        }
+
+        const firstDoneStr  = (doneLogs[0].date as Date).toISOString().split("T")[0];
+        const firstMidnight = new Date(firstDoneStr + "T00:00:00.000Z");
+        // Both are UTC midnight strings → exact integer day difference
+        const itemTotalDays = Math.max(1, Math.round((toMidnight.getTime() - firstMidnight.getTime()) / 86400000) + 1);
+
         return {
           id: item.id,
           title: item.title,
           category: item.category,
-          totalDays: days,
-          doneDays: done,
-          rate: Math.round((done / days) * 100),
+          totalDays: itemTotalDays,
+          doneDays: doneLogs.length,
+          rate: Math.round((doneLogs.length / itemTotalDays) * 100),
         };
       });
 
       const totalExpected = existing.items.length * days;
       const totalDone = logs.filter((l) => l.isDone).length;
 
-      sendSuccess(
-        res,
-        {
-          overallRate: totalExpected > 0 ? Math.round((totalDone / totalExpected) * 100) : 0,
-          totalExpected,
-          totalDone,
-          days,
-          dailyStats,
-          itemStats,
-        },
-        "Analytics retrieved"
-      );
+      // ── Streaks ───────────────────────────────────────────────────────────
+      let longestStreak = 0, tempStreak = 0;
+      for (const d of dailyStats) {
+        if (d.total > 0 && d.done === d.total) { tempStreak++; longestStreak = Math.max(longestStreak, tempStreak); }
+        else if (d.total > 0) tempStreak = 0;
+      }
+
+      // Current streak: count back from the last day; if today is not yet fully
+      // complete, skip it (allow the streak to survive until end-of-day)
+      let currentStreak = 0;
+      const sortedDesc = [...dailyStats].reverse();
+      let startIdx = 0;
+      if (sortedDesc.length > 0 && sortedDesc[0].date === toStr && sortedDesc[0].done < sortedDesc[0].total) {
+        startIdx = 1; // Today not fully done yet — start from yesterday
+      }
+      for (let i = startIdx; i < sortedDesc.length; i++) {
+        const d = sortedDesc[i];
+        if (d.total > 0 && d.done === d.total) currentStreak++;
+        else if (d.total > 0) break;
+      }
+
+      // ── Day-of-week breakdown (UTC weekday so it matches stored UTC dates) ─
+      const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const dowMap: Record<string, { done: number; total: number }> = {};
+      DOW.forEach((n) => { dowMap[n] = { done: 0, total: 0 }; });
+      for (const d of dailyStats) {
+        if (d.total === 0) continue;
+        // UTC noon → stable UTC weekday regardless of server locale
+        const name = DOW[new Date(d.date + "T12:00:00.000Z").getUTCDay()];
+        dowMap[name].done += d.done;
+        dowMap[name].total += d.total;
+      }
+      const dowStats = DOW.map((name) => ({
+        name,
+        done: dowMap[name].done,
+        total: dowMap[name].total,
+        rate: dowMap[name].total > 0 ? Math.round((dowMap[name].done / dowMap[name].total) * 100) : 0,
+      }));
+
+      sendSuccess(res, {
+        overallRate: totalExpected > 0 ? Math.round((totalDone / totalExpected) * 100) : 0,
+        totalExpected, totalDone, days,
+        from: fromStr, to: toStr,
+        currentStreak, longestStreak,
+        dailyStats, itemStats, dowStats,
+      }, "Analytics retrieved");
     } catch (error) {
       logger.error("GetAnalytics error:", error);
       sendError(res, "Failed to get analytics");
