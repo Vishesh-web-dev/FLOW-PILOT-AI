@@ -31,7 +31,7 @@ function parseAIResponse(content: string): AIActionResult {
 
 // ─── OpenAI call ──────────────────────────────────────────────────────────────
 
-async function callOpenAI(systemPrompt: string, userMessage: string): Promise<string> {
+async function callOpenAI(systemPrompt: string, userMessage: string, maxTokens = 1500): Promise<string> {
   if (!openai) throw new Error("OpenAI client not initialized. Set OPENAI_API_KEY in .env");
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -40,7 +40,7 @@ async function callOpenAI(systemPrompt: string, userMessage: string): Promise<st
       { role: "user", content: userMessage },
     ],
     temperature: 0.3,
-    max_tokens: 1500,
+    max_tokens: maxTokens,
     response_format: { type: "json_object" },
   });
   const content = response.choices[0]?.message?.content;
@@ -50,14 +50,14 @@ async function callOpenAI(systemPrompt: string, userMessage: string): Promise<st
 
 // ─── Gemini call ──────────────────────────────────────────────────────────────
 
-async function callGemini(systemPrompt: string, userMessage: string): Promise<string> {
+async function callGemini(systemPrompt: string, userMessage: string, maxTokens = 1500): Promise<string> {
   if (!gemini) throw new Error("Gemini client not initialized. Set GEMINI_API_KEY in .env");
   const model = gemini.getGenerativeModel({
     model: "gemini-3.5-flash",   // latest free-tier Flash model (May 2026)
     systemInstruction: systemPrompt,
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 1500,
+      maxOutputTokens: maxTokens,
       responseMimeType: "application/json",
     },
   });
@@ -69,9 +69,9 @@ async function callGemini(systemPrompt: string, userMessage: string): Promise<st
 
 // ─── Unified dispatcher ───────────────────────────────────────────────────────
 
-export async function callAI(systemPrompt: string, userMessage: string): Promise<string> {
-  if (AI_PROVIDER === "gemini") return callGemini(systemPrompt, userMessage);
-  return callOpenAI(systemPrompt, userMessage);
+export async function callAI(systemPrompt: string, userMessage: string, maxTokens = 1500): Promise<string> {
+  if (AI_PROVIDER === "gemini") return callGemini(systemPrompt, userMessage, maxTokens);
+  return callOpenAI(systemPrompt, userMessage, maxTokens);
 }
 
 // ─── Error handler ────────────────────────────────────────────────────────────
