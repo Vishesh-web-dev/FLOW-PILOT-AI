@@ -86,6 +86,9 @@ export const getActivityIcon = (type: ActivityType): string => {
     MEMBER_JOINED: "👥",
     MEMBER_REMOVED: "🚪",
     MEMBER_ROLE_CHANGED: "🔑",
+    SCHEDULE_CREATED: "📅",
+    SCHEDULE_UPDATED: "🗓️",
+    SCHEDULE_CHECKED: "✔️",
   };
   return icons[type] || "📝";
 };
@@ -106,6 +109,9 @@ export const getActivityColor = (type: ActivityType): string => {
     MEMBER_JOINED: "#22c55e",
     MEMBER_REMOVED: "#ef4444",
     MEMBER_ROLE_CHANGED: "#f59e0b",
+    SCHEDULE_CREATED: "#0ea5e9",
+    SCHEDULE_UPDATED: "#38bdf8",
+    SCHEDULE_CHECKED: "#22d3ee",
   };
   return colors[type] || "#6b7280";
 };
