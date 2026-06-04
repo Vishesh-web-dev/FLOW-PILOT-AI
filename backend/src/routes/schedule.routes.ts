@@ -16,6 +16,7 @@ router.delete("/:id", scheduleController.remove);
 
 // Schedule items
 router.post("/:id/items", scheduleController.addItem);
+router.put("/:id/items/reorder", scheduleController.reorderItems);
 router.put("/:id/items/:itemId", scheduleController.updateItem);
 router.delete("/:id/items/:itemId", scheduleController.deleteItem);
 

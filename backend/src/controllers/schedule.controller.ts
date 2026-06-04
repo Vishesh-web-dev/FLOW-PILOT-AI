@@ -200,6 +200,38 @@ export const scheduleController = {
     }
   },
 
+  // ── PUT /api/schedules/:id/items/reorder ────────────────────────────────────
+  // Body: { items: Array<{ id: string; order: number }> }
+  async reorderItems(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { id } = req.params;
+      const { items } = req.body as { items: Array<{ id: string; order: number }> };
+
+      if (!Array.isArray(items) || items.length === 0) {
+        sendError(res, "items array is required", 400);
+        return;
+      }
+
+      const existing = await prisma.schedule.findFirst({ where: { id, userId } });
+      if (!existing) { sendNotFound(res, "Schedule not found"); return; }
+
+      await prisma.$transaction(
+        items.map((item) =>
+          prisma.scheduleItem.update({
+            where: { id: item.id },
+            data: { order: item.order },
+          })
+        )
+      );
+
+      sendSuccess(res, null, "Items reordered");
+    } catch (error) {
+      logger.error("ReorderScheduleItems error:", error);
+      sendError(res, "Failed to reorder items");
+    }
+  },
+
   // ── GET /api/schedules/:id/logs?date=YYYY-MM-DD ─────────────────────────────
   async getLogs(req: AuthRequest, res: Response): Promise<void> {
     try {

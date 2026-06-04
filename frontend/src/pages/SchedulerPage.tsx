@@ -1,7 +1,24 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Popconfirm, TimePicker, Select, Input, DatePicker } from "antd";
 import dayjs from "dayjs";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { schedulerApi, ScheduleAnalytics } from "../api/scheduler.api";
 import { Schedule, ScheduleItem, ScheduleLog, ScheduleType } from "../types";
 import {
@@ -26,6 +43,7 @@ import {
   Zap,
   Activity,
   CalendarRange,
+  GripVertical,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -116,6 +134,90 @@ function CategoryBadge({ category }: { category?: string | null }) {
 
 // ─── Create / Edit Schedule Modal ─────────────────────────────────────────────
 
+interface ModalItem {
+  localId: string;   // unique DnD key (DB id for existing items, UUID for new)
+  id?: string;       // DB id — only set for existing items
+  title: string;
+  description: string;
+  timeOfDay: string;
+  category: string;
+}
+
+function SortableModalItemRow({
+  item,
+  index,
+  showRemove,
+  onChange,
+  onRemove,
+}: {
+  item: ModalItem;
+  index: number;
+  showRemove: boolean;
+  onChange: (field: "title" | "description" | "timeOfDay" | "category", value: string) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.localId,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        marginBottom: 8,
+      }}
+    >
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <button
+          {...attributes}
+          {...listeners}
+          style={{
+            background: "none", border: "none", color: "#4b5563",
+            cursor: "grab", padding: "4px 2px",
+            display: "flex", alignItems: "center", flexShrink: 0,
+          }}
+        >
+          <GripVertical size={14} />
+        </button>
+        <Input
+          value={item.title}
+          onChange={(e) => onChange("title", e.target.value)}
+          placeholder={`Item ${index + 1} (e.g. Wake up)`}
+          style={{ flex: 1 }}
+        />
+        <TimePicker
+          value={item.timeOfDay ? dayjs(item.timeOfDay, "HH:mm") : null}
+          onChange={(val) => onChange("timeOfDay", val ? val.format("HH:mm") : "")}
+          format="HH:mm"
+          allowClear
+          placeholder="Time"
+          placement="bottomLeft"
+          popupStyle={{ zIndex: 1100 }}
+          style={{ width: 110 }}
+        />
+        <Select
+          value={item.category}
+          onChange={(val) => onChange("category", val)}
+          style={{ width: 120 }}
+          popupMatchSelectWidth={false}
+          options={Object.entries(CATEGORY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
+        />
+        {showRemove && (
+          <button
+            onClick={onRemove}
+            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", flexShrink: 0 }}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ScheduleModal({
   onClose,
   onSaved,
@@ -131,11 +233,39 @@ function ScheduleModal({
   const [type, setType] = useState<"DAILY" | "WEEKLY" | "MONTHLY">(editSchedule?.type ?? "DAILY");
   const [aiPrompt, setAiPrompt] = useState("");
   const [mode, setMode] = useState<"manual" | "ai">("manual");
-  const [items, setItems] = useState<{ title: string; timeOfDay: string; category: string }[]>([
-    { title: "", timeOfDay: "", category: "personal" },
-  ]);
+  const [items, setItems] = useState<ModalItem[]>(
+    editSchedule?.items.length
+      ? editSchedule.items.map((item) => ({
+          localId: item.id,
+          id: item.id,
+          title: item.title,
+          description: item.description ?? "",
+          timeOfDay: item.timeOfDay ?? "",
+          category: item.category ?? "personal",
+        }))
+      : [{ localId: crypto.randomUUID(), title: "", description: "", timeOfDay: "", category: "personal" }]
+  );
 
   const qc = useQueryClient();
+
+  const modalSensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleModalDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex((i) => i.localId === active.id);
+    const newIdx = items.findIndex((i) => i.localId === over.id);
+    setItems(arrayMove(items, oldIdx, newIdx));
+  };
+
+  const updateItemField = (idx: number, field: "title" | "description" | "timeOfDay" | "category", value: string) => {
+    const copy = [...items];
+    copy[idx] = { ...copy[idx], [field]: value };
+    setItems(copy);
+  };
 
   const createMutation = useMutation({
     mutationFn: schedulerApi.create,
@@ -149,9 +279,41 @@ function ScheduleModal({
   });
 
   const updateScheduleMutation = useMutation({
-    mutationFn: () => schedulerApi.update(editSchedule!.id, { name, description, type }),
-    onSuccess: (res) => {
-      const s = res.data.data!;
+    mutationFn: async () => {
+      // 1. Update schedule metadata
+      await schedulerApi.update(editSchedule!.id, { name, description, type });
+
+      // 2. Delete items that were removed in the modal
+      const currentIds = new Set(items.filter((i) => i.id).map((i) => i.id!));
+      const toDelete = editSchedule!.items.filter((i) => !currentIds.has(i.id));
+      await Promise.all(toDelete.map((i) => schedulerApi.deleteItem(editSchedule!.id, i.id)));
+
+      // 3. Update existing items + add new items (preserves order from modal)
+      await Promise.all(
+        items.map((item, idx) =>
+          item.id
+            ? schedulerApi.updateItem(editSchedule!.id, item.id, {
+                title: item.title,
+                description: item.description || null,
+                timeOfDay: item.timeOfDay || null,
+                category: item.category,
+                order: idx,
+              })
+            : schedulerApi.addItem(editSchedule!.id, {
+                title: item.title,
+                description: item.description || undefined,
+                timeOfDay: item.timeOfDay || undefined,
+                category: item.category,
+                order: idx,
+              })
+        )
+      );
+
+      // 4. Return refreshed schedule with updated items
+      const res = await schedulerApi.getOne(editSchedule!.id);
+      return res.data.data!;
+    },
+    onSuccess: (s) => {
       qc.invalidateQueries({ queryKey: ["schedules"] });
       toast.success(`Schedule "${s.name}" updated!`);
       onSaved(s);
@@ -177,7 +339,14 @@ function ScheduleModal({
     if (isEdit) {
       updateScheduleMutation.mutate();
     } else {
-      const validItems = items.filter((i) => i.title.trim());
+      const validItems = items
+        .filter((i) => i.title.trim())
+        .map(({ title, description, timeOfDay, category }) => ({
+          title,
+          description: description || undefined,
+          timeOfDay: timeOfDay || undefined,
+          category,
+        }));
       createMutation.mutate({ name, description, type, items: validItems });
     }
   };
@@ -282,69 +451,42 @@ function ScheduleModal({
               popupMatchSelectWidth
             />
 
-            {/* Items — create only */}
-            {!isEdit && (
-              <>
-                <p style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>Schedule items</p>
-                {items.map((item, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-                    <Input
-                      value={item.title}
-                      onChange={(e) => {
-                        const copy = [...items];
-                        copy[idx].title = e.target.value;
-                        setItems(copy);
-                      }}
-                      placeholder={`Item ${idx + 1} (e.g. Wake up)`}
-                      style={{ flex: 1 }}
+            {/* Items section — shown for both create and edit modes */}
+            <>
+              <p style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>
+                Schedule items
+                {isEdit && <span style={{ color: "#4b5563", fontSize: 11, marginLeft: 6 }}>— drag ☰ to reorder</span>}
+              </p>
+              <DndContext sensors={modalSensors} collisionDetection={closestCenter} onDragEnd={handleModalDragEnd}>
+                <SortableContext items={items.map((i) => i.localId)} strategy={verticalListSortingStrategy}>
+                  {items.map((item, idx) => (
+                    <SortableModalItemRow
+                      key={item.localId}
+                      item={item}
+                      index={idx}
+                      showRemove={items.length > 1}
+                      onChange={(field, value) => updateItemField(idx, field, value)}
+                      onRemove={() => setItems(items.filter((_, i) => i !== idx))}
                     />
-                    <TimePicker
-                      value={item.timeOfDay ? dayjs(item.timeOfDay, "HH:mm") : null}
-                      onChange={(val) => {
-                        const copy = [...items];
-                        copy[idx].timeOfDay = val ? val.format("HH:mm") : "";
-                        setItems(copy);
-                      }}
-                      format="HH:mm"
-                      allowClear
-                      placeholder="Time"
-                      placement="bottomLeft"
-                      popupStyle={{ zIndex: 1100 }}
-                      style={{ width: 110 }}
-                    />
-                    <Select
-                      value={item.category}
-                      onChange={(val) => {
-                        const copy = [...items];
-                        copy[idx].category = val;
-                        setItems(copy);
-                      }}
-                      style={{ width: 120 }}
-                      popupMatchSelectWidth={false}
-                      options={Object.entries(CATEGORY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
-                    />
-                    {items.length > 1 && (
-                      <button
-                        onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  onClick={() => setItems([...items, { title: "", timeOfDay: "", category: "personal" }])}
-                  style={{
-                    background: "none", border: "1px dashed #2a2a3a", color: "#64748b",
-                    borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, width: "100%",
-                    marginBottom: 16,
-                  }}
-                >
-                  + Add item
-                </button>
-              </>
-            )}
+                  ))}
+                </SortableContext>
+              </DndContext>
+              <button
+                onClick={() =>
+                  setItems([...items, {
+                    localId: crypto.randomUUID(),
+                    title: "", description: "", timeOfDay: "", category: "personal",
+                  }])
+                }
+                style={{
+                  background: "none", border: "1px dashed #2a2a3a", color: "#64748b",
+                  borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, width: "100%",
+                  marginBottom: 16,
+                }}
+              >
+                + Add item
+              </button>
+            </>
             <button
               onClick={handleManualSubmit}
               disabled={isPending}
@@ -514,13 +656,145 @@ function EditItemModal({
   );
 }
 
+// ─── Sortable schedule item row (used inside DailyCheckIn) ───────────────────
+
+interface SortableScheduleItemProps {
+  item: ScheduleItem;
+  isDone: boolean;
+  stats: { doneDays: number; totalDays: number } | undefined;
+  completionUnit: string;
+  isPendingToggle: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function SortableScheduleItem({
+  item,
+  isDone,
+  stats,
+  completionUnit,
+  isPendingToggle,
+  onToggle,
+  onEdit,
+  onDelete,
+}: SortableScheduleItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      onClick={onToggle}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.45 : isPendingToggle ? 0.7 : 1,
+        zIndex: isDragging ? 999 : undefined,
+        display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+        background: isDone ? "rgba(16,185,129,0.06)" : "#1c1c28",
+        border: `1px solid ${isDone ? "rgba(16,185,129,0.25)" : "#2a2a3a"}`,
+        borderRadius: 10, cursor: "pointer",
+      }}
+    >
+      {isDone
+        ? <CheckCircle2 size={20} color="#10b981" />
+        : <Circle size={20} color="#4b5563" />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          color: isDone ? "#64748b" : "#e2e8f0",
+          textDecoration: isDone ? "line-through" : "none",
+          fontSize: 14, fontWeight: 500,
+        }}>
+          {item.title}
+        </div>
+        {item.description && (
+          <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{item.description}</div>
+        )}
+        {stats && stats.doneDays > 0 && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 4, marginTop: 5,
+            background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)",
+            borderRadius: 6, padding: "2px 7px",
+          }}>
+            <span style={{ color: "#10b981", fontSize: 10, fontWeight: 700 }}>✓</span>
+            <span style={{ color: "#94a3b8", fontSize: 11 }}>
+              {stats.doneDays}<span style={{ color: "#4b5563" }}>/{stats.totalDays}{completionUnit}</span>
+            </span>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+        {item.timeOfDay && (
+          <span style={{ color: "#6366f1", fontSize: 12, display: "flex", alignItems: "center", gap: 3 }}>
+            <Clock size={11} />{item.timeOfDay}
+          </span>
+        )}
+        <CategoryBadge category={item.category} />
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          title="Edit item"
+          style={{
+            background: "none", border: "none", color: "#4b5563",
+            cursor: "pointer", padding: "2px 4px",
+            display: "flex", alignItems: "center", flexShrink: 0,
+            borderRadius: 4,
+          }}
+        >
+          <Edit2 size={12} />
+        </button>
+        <Popconfirm
+          title="Delete this item?"
+          description="This will permanently remove the item and its logs."
+          onConfirm={(e) => { e?.stopPropagation(); onDelete(); }}
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+          cancelText="Cancel"
+        >
+          <button
+            onClick={(e) => e.stopPropagation()}
+            title="Delete item"
+            style={{
+              background: "none", border: "none", color: "#ef4444",
+              cursor: "pointer", padding: "2px 4px",
+              display: "flex", alignItems: "center", flexShrink: 0,
+              borderRadius: 4,
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        </Popconfirm>
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to reorder"
+          style={{
+            background: "none", border: "none", color: "#4b5563",
+            cursor: "grab", padding: "2px 4px",
+            display: "flex", alignItems: "center", flexShrink: 0,
+            borderRadius: 4,
+          }}
+        >
+          <GripVertical size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Daily Check-in View ──────────────────────────────────────────────────────
 
 function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   const currentPeriodKey = getPeriodKey(schedule.type, new Date());
   const [periodKey, setPeriodKey] = useState(currentPeriodKey);
   const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
+  const [localItems, setLocalItems] = useState<ScheduleItem[]>([...schedule.items]);
   const qc = useQueryClient();
+
+  // Keep localItems in sync when schedule.items changes (e.g. after add/delete/refetch)
+  useEffect(() => setLocalItems([...schedule.items]), [schedule.items]);
 
   const isCurrentPeriod = periodKey === currentPeriodKey;
 
@@ -558,6 +832,40 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   const doneCount = logs.filter((l) => l.isDone).length;
   const totalCount = schedule.items.length;
   const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (itemId: string) => schedulerApi.deleteItem(schedule.id, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      toast.success("Item deleted");
+    },
+    onError: () => toast.error("Failed to delete item"),
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (items: Array<{ id: string; order: number }>) =>
+      schedulerApi.reorderItems(schedule.id, items),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
+    onError: () => {
+      toast.error("Failed to reorder");
+      setLocalItems([...schedule.items]);
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = localItems.findIndex((i) => i.id === active.id);
+    const newIdx = localItems.findIndex((i) => i.id === over.id);
+    const reordered = arrayMove(localItems, oldIdx, newIdx);
+    setLocalItems(reordered);
+    reorderMutation.mutate(reordered.map((item, idx) => ({ id: item.id, order: idx })));
+  };
 
   const movePeriod = (dir: number) => {
     const d = new Date(periodKey + "T12:00:00");
@@ -646,74 +954,30 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
           Loading...
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {schedule.items.map((item) => {
-            const log = getLog(item.id);
-            const isDone = log?.isDone ?? false;
-            const stats = itemStatsQuery.data?.[item.id];
-            return (
-              <div
-                key={item.id}
-                onClick={() => toggleMutation.mutate({ itemId: item.id, isDone: !isDone })}
-                style={{
-                  display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                  background: isDone ? "rgba(16,185,129,0.06)" : "#1c1c28",
-                  border: `1px solid ${isDone ? "rgba(16,185,129,0.25)" : "#2a2a3a"}`,
-                  borderRadius: 10, cursor: "pointer", transition: "all 0.15s",
-                  opacity: toggleMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {isDone
-                  ? <CheckCircle2 size={20} color="#10b981" />
-                  : <Circle size={20} color="#4b5563" />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    color: isDone ? "#64748b" : "#e2e8f0",
-                    textDecoration: isDone ? "line-through" : "none",
-                    fontSize: 14, fontWeight: 500,
-                  }}>
-                    {item.title}
-                  </div>
-                  {item.description && (
-                    <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{item.description}</div>
-                  )}
-                  {stats && stats.doneDays > 0 && (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 4, marginTop: 5,
-                      background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)",
-                      borderRadius: 6, padding: "2px 7px",
-                    }}>
-                      <span style={{ color: "#10b981", fontSize: 10, fontWeight: 700 }}>✓</span>
-                      <span style={{ color: "#94a3b8", fontSize: 11 }}>
-                        {stats.doneDays}<span style={{ color: "#4b5563" }}>/{stats.totalDays}{completionUnit}</span>
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                  {item.timeOfDay && (
-                    <span style={{ color: "#6366f1", fontSize: 12, display: "flex", alignItems: "center", gap: 3 }}>
-                      <Clock size={11} />{item.timeOfDay}
-                    </span>
-                  )}
-                  <CategoryBadge category={item.category} />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingItem(item); }}
-                    title="Edit item"
-                    style={{
-                      background: "none", border: "none", color: "#4b5563",
-                      cursor: "pointer", padding: "2px 4px",
-                      display: "flex", alignItems: "center", flexShrink: 0,
-                      borderRadius: 4,
-                    }}
-                  >
-                    <Edit2 size={12} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={localItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {localItems.map((item) => {
+                const log = getLog(item.id);
+                const isDone = log?.isDone ?? false;
+                const stats = itemStatsQuery.data?.[item.id];
+                return (
+                  <SortableScheduleItem
+                    key={item.id}
+                    item={item}
+                    isDone={isDone}
+                    stats={stats}
+                    completionUnit={completionUnit}
+                    isPendingToggle={toggleMutation.isPending}
+                    onToggle={() => toggleMutation.mutate({ itemId: item.id, isDone: !isDone })}
+                    onEdit={() => setEditingItem(item)}
+                    onDelete={() => deleteItemMutation.mutate(item.id)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {editingItem && (

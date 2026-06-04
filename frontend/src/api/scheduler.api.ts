@@ -62,7 +62,7 @@ export const schedulerApi = {
   // Items
   addItem: (
     scheduleId: string,
-    data: { title: string; description?: string; timeOfDay?: string; category?: string }
+    data: { title: string; description?: string; timeOfDay?: string; category?: string; order?: number }
   ) => apiClient.post<ApiResponse<ScheduleItem>>(`/schedules/${scheduleId}/items`, data),
 
   updateItem: (
@@ -73,6 +73,9 @@ export const schedulerApi = {
 
   deleteItem: (scheduleId: string, itemId: string) =>
     apiClient.delete(`/schedules/${scheduleId}/items/${itemId}`),
+
+  reorderItems: (scheduleId: string, items: Array<{ id: string; order: number }>) =>
+    apiClient.put(`/schedules/${scheduleId}/items/reorder`, { items }),
 
   // Logs
   getLogs: (scheduleId: string, date: string) =>
