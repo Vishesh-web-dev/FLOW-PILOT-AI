@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Popconfirm, TimePicker, Select, Input, DatePicker } from "antd";
+import { Popconfirm, TimePicker, Select, Input, DatePicker, Tooltip } from "antd";
 import dayjs from "dayjs";
 import {
   DndContext,
@@ -1337,18 +1337,19 @@ export default function SchedulerPage() {
                         </span>
                       </div>
                     </div>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive });
-                      }}
-                      title={s.isActive ? "Active — click to pause" : "Paused — click to activate"}
-                      style={{
-                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 4,
-                        background: s.isActive ? "#10b981" : "#374151",
-                        cursor: "pointer",
-                      }}
-                    />
+                    <Tooltip title={s.isActive ? "Active — click to pause" : "Paused — click to activate"} placement="top">
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleActiveMutation.mutate({ id: s.id, isActive: !s.isActive });
+                        }}
+                        style={{
+                          width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 4,
+                          background: s.isActive ? "#10b981" : "#374151",
+                          cursor: "pointer",
+                        }}
+                      />
+                    </Tooltip>
                   </div>
                 </div>
               );
