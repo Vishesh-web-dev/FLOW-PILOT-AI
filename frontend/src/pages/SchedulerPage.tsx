@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Popconfirm, TimePicker, Select, Input, DatePicker, Tooltip } from "antd";
+import { Popconfirm, TimePicker, Select, Input, DatePicker, Tooltip, Spin } from "antd";
 import dayjs from "dayjs";
 import {
   DndContext,
@@ -1096,9 +1096,8 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
 
       {/* Items */}
       {logsQuery.isLoading ? (
-        <div style={{ textAlign: "center", padding: 32, color: "#64748b" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          Loading...
+        <div style={{ display: "flex", justifyContent: "center", padding: 32 }}>
+          <Spin size="large" />
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1212,9 +1211,8 @@ function AnalyticsView({ schedule }: { schedule: Schedule }) {
       </div>
 
       {analyticsQuery.isLoading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          Loading analytics…
+        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+          <Spin size="large" />
         </div>
       ) : !data ? null : (
         <>
@@ -1419,9 +1417,8 @@ export default function SchedulerPage() {
       </div>
 
       {schedulesQuery.isLoading ? (
-        <div style={{ textAlign: "center", padding: 80, color: "#64748b" }}>
-          <Loader2 size={32} className="animate-spin" style={{ margin: "0 auto 12px" }} />
-          Loading schedules...
+        <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
+          <Spin size="large" />
         </div>
       ) : schedules.length === 0 ? (
         <div
