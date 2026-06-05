@@ -191,6 +191,8 @@ model Schedule {
   description String?
   type        ScheduleType @default(DAILY)
   isActive    Boolean      @default(true)
+  startDate   DateTime?    // Optional start date (inclusive, UTC midnight)
+  endDate     DateTime?    // Optional end date (inclusive, UTC midnight) — auto-deactivates after this
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

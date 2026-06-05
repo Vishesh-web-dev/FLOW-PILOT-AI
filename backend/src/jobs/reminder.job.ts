@@ -73,6 +73,28 @@ export const startReminderJob = (): void => {
     }
   });
 
+  // ── Auto-deactivate schedules whose endDate has passed ──────────────────────
+  cron.schedule("5 0 * * *", async () => {
+    try {
+      // "Today" as UTC midnight — any endDate strictly before today has expired
+      const todayMidnight = new Date(new Date().toISOString().split("T")[0] + "T00:00:00.000Z");
+
+      const result = await prisma.schedule.updateMany({
+        where: {
+          isActive: true,
+          endDate: { lt: todayMidnight },
+        },
+        data: { isActive: false },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Auto-deactivated ${result.count} expired schedule(s)`);
+      }
+    } catch (error) {
+      logger.error("Schedule auto-deactivation job error:", error);
+    }
+  });
+
   logger.info("✅ Reminder jobs started");
 };
 

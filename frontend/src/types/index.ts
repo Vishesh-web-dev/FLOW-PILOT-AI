@@ -52,6 +52,8 @@ export interface Schedule {
   description?: string | null;
   type: ScheduleType;
   isActive: boolean;
+  startDate?: string | null; // "YYYY-MM-DD" in UTC — null/undefined means no restriction
+  endDate?: string | null;   // "YYYY-MM-DD" in UTC — null/undefined means no restriction
   userId: string;
   createdAt: string;
   updatedAt: string;

@@ -44,6 +44,7 @@ import {
   Activity,
   CalendarRange,
   GripVertical,
+  Infinity,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -106,6 +107,38 @@ const CATEGORY_LABELS: Record<string, string> = {
   fitness: "Fitness",
   mindfulness: "Mindfulness",
 };
+
+// ─── Schedule date-range badge ────────────────────────────────────────────────
+
+function ScheduleDateRange({ schedule, compact = false }: { schedule: Schedule; compact?: boolean }) {
+  const hasStart = !!schedule.startDate;
+  const hasEnd   = !!schedule.endDate;
+  if (!hasStart && !hasEnd) {
+    return (
+      <span style={{
+        fontSize: compact ? 10 : 11, color: "#4b5563",
+        display: "inline-flex", alignItems: "center", gap: 3,
+      }}>
+        <Infinity size={compact ? 9 : 10} />
+        Lifetime
+      </span>
+    );
+  }
+  const fmt = (d: string) => new Date(toDateOnly(d) + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return (
+    <span style={{
+      fontSize: compact ? 10 : 11, color: "#a5b4fc",
+      display: "inline-flex", alignItems: "center", gap: 4,
+      background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)",
+      borderRadius: 5, padding: compact ? "1px 5px" : "2px 7px",
+    }}>
+      <CalendarRange size={compact ? 9 : 10} />
+      {hasStart ? fmt(schedule.startDate!) : "∞"}
+      {" → "}
+      {hasEnd ? fmt(schedule.endDate!) : "∞"}
+    </span>
+  );
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -218,6 +251,14 @@ function SortableModalItemRow({
   );
 }
 
+// ── Helpers for startDate / endDate from the backend ────────────────────────
+// Prisma returns full ISO strings ("2026-06-05T00:00:00.000Z"); strip to YYYY-MM-DD
+const toDateOnly = (d: string): string => d.length > 10 ? d.slice(0, 10) : d;
+
+function parseDateStr(d: string | null | undefined): dayjs.Dayjs | null {
+  return d ? dayjs(toDateOnly(d), "YYYY-MM-DD") : null;
+}
+
 function ScheduleModal({
   onClose,
   onSaved,
@@ -231,6 +272,8 @@ function ScheduleModal({
   const [name, setName] = useState(editSchedule?.name ?? "");
   const [description, setDescription] = useState(editSchedule?.description ?? "");
   const [type, setType] = useState<"DAILY" | "WEEKLY" | "MONTHLY">(editSchedule?.type ?? "DAILY");
+  const [startDate, setStartDate] = useState<dayjs.Dayjs | null>(parseDateStr(editSchedule?.startDate));
+  const [endDate, setEndDate] = useState<dayjs.Dayjs | null>(parseDateStr(editSchedule?.endDate));
   const [aiPrompt, setAiPrompt] = useState("");
   const [mode, setMode] = useState<"manual" | "ai">("manual");
   const [items, setItems] = useState<ModalItem[]>(
@@ -280,8 +323,17 @@ function ScheduleModal({
 
   const updateScheduleMutation = useMutation({
     mutationFn: async () => {
-      // 1. Update schedule metadata
-      await schedulerApi.update(editSchedule!.id, { name, description, type });
+      // 1. Update schedule metadata (including optional date range)
+      const startStr = startDate ? startDate.format("YYYY-MM-DD") : undefined;
+      const endStr   = endDate   ? endDate.format("YYYY-MM-DD")   : undefined;
+      await schedulerApi.update(editSchedule!.id, {
+        name, description, type,
+        startDate: startStr,
+        endDate:   endStr,
+        // Explicitly clear a date if user removed it
+        clearStartDate: !startDate && !!editSchedule!.startDate,
+        clearEndDate:   !endDate   && !!editSchedule!.endDate,
+      });
 
       // 2. Delete items that were removed in the modal
       const currentIds = new Set(items.filter((i) => i.id).map((i) => i.id!));
@@ -336,6 +388,12 @@ function ScheduleModal({
 
   const handleManualSubmit = () => {
     if (!name.trim()) { toast.error("Schedule name is required"); return; }
+    const startStr = startDate ? startDate.format("YYYY-MM-DD") : undefined;
+    const endStr   = endDate   ? endDate.format("YYYY-MM-DD")   : undefined;
+    if (startStr && endStr && startStr > endStr) {
+      toast.error("Start date must be before or equal to end date");
+      return;
+    }
     if (isEdit) {
       updateScheduleMutation.mutate();
     } else {
@@ -347,7 +405,7 @@ function ScheduleModal({
           timeOfDay: timeOfDay || undefined,
           category,
         }));
-      createMutation.mutate({ name, description, type, items: validItems });
+      createMutation.mutate({ name, description, type, startDate: startStr, endDate: endStr, items: validItems });
     }
   };
 
@@ -450,6 +508,57 @@ function ScheduleModal({
               ]}
               popupMatchSelectWidth
             />
+
+            {/* Optional date range */}
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ color: "#64748b", fontSize: 12, fontWeight: 600, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                <CalendarRange size={12} /> Active Date Range
+                <span style={{ color: "#4b5563", fontWeight: 400, fontSize: 11 }}>— optional, leave blank for lifetime</span>
+              </p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: "#64748b", fontSize: 11, display: "block", marginBottom: 4 }}>Start Date</label>
+                  <DatePicker
+                    value={startDate}
+                    onChange={(val) => {
+                      setStartDate(val);
+                      // If new start is after current end, clear end
+                      if (val && endDate && val.isAfter(endDate)) setEndDate(null);
+                    }}
+                    disabledDate={(d) => !!(endDate && d.isAfter(endDate))}
+                    allowClear
+                    placeholder="No start limit"
+                    popupStyle={{ zIndex: 1100 }}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: "#64748b", fontSize: 11, display: "block", marginBottom: 4 }}>End Date</label>
+                  <DatePicker
+                    value={endDate}
+                    onChange={(val) => setEndDate(val)}
+                    disabledDate={(d) => !!(startDate && d.isBefore(startDate))}
+                    allowClear
+                    placeholder="No end limit"
+                    popupStyle={{ zIndex: 1100 }}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+              {(startDate || endDate) && (
+                <div style={{
+                  marginTop: 8, padding: "6px 10px",
+                  background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)",
+                  borderRadius: 6, fontSize: 12, color: "#a5b4fc",
+                  display: "flex", alignItems: "center", gap: 4,
+                }}>
+                  <CalendarRange size={11} />
+                  {startDate ? startDate.format("MMM D, YYYY") : "∞"}
+                  {" → "}
+                  {endDate ? endDate.format("MMM D, YYYY") : "∞"}
+                </div>
+              )}
+            </div>
 
             {/* Items section — shown for both create and edit modes */}
             <>
@@ -788,7 +897,21 @@ function SortableScheduleItem({
 
 function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   const currentPeriodKey = getPeriodKey(schedule.type, new Date());
-  const [periodKey, setPeriodKey] = useState(currentPeriodKey);
+
+  // Clamp initial period to be within [startDate, endDate] bounds if set
+  const clampPeriod = (key: string): string => {
+    if (schedule.startDate) {
+      const startKey = getPeriodKey(schedule.type, new Date(toDateOnly(schedule.startDate) + "T12:00:00"));
+      if (key < startKey) return startKey;
+    }
+    if (schedule.endDate) {
+      const endKey = getPeriodKey(schedule.type, new Date(toDateOnly(schedule.endDate) + "T12:00:00"));
+      if (key > endKey) return endKey;
+    }
+    return key;
+  };
+
+  const [periodKey, setPeriodKey] = useState(() => clampPeriod(currentPeriodKey));
   const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
   const [localItems, setLocalItems] = useState<ScheduleItem[]>([...schedule.items]);
   const qc = useQueryClient();
@@ -797,6 +920,21 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
   useEffect(() => setLocalItems([...schedule.items]), [schedule.items]);
 
   const isCurrentPeriod = periodKey === currentPeriodKey;
+
+  // Compute boundary period keys from startDate / endDate
+  const minPeriodKey = schedule.startDate
+    ? getPeriodKey(schedule.type, new Date(toDateOnly(schedule.startDate) + "T12:00:00"))
+    : null;
+  // Cap at the earlier of: endDate's period OR today — never allow navigating into the future
+  const endDatePeriodKey = schedule.endDate
+    ? getPeriodKey(schedule.type, new Date(toDateOnly(schedule.endDate) + "T12:00:00"))
+    : null;
+  const maxPeriodKey = endDatePeriodKey && endDatePeriodKey < currentPeriodKey
+    ? endDatePeriodKey
+    : currentPeriodKey;
+
+  const canGoBack    = minPeriodKey ? periodKey > minPeriodKey : true;
+  const canGoForward = periodKey < maxPeriodKey;
 
   const logsQuery = useQuery({
     queryKey: ["schedule-logs", schedule.id, periodKey],
@@ -872,7 +1010,11 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
     if (schedule.type === "MONTHLY") d.setMonth(d.getMonth() + dir);
     else if (schedule.type === "WEEKLY") d.setDate(d.getDate() + dir * 7);
     else d.setDate(d.getDate() + dir);
-    setPeriodKey(getPeriodKey(schedule.type, d));
+    const next = getPeriodKey(schedule.type, d);
+    // Clamp to allowed range
+    if (minPeriodKey && next < minPeriodKey) return;
+    if (next > maxPeriodKey) return;
+    setPeriodKey(next);
   };
 
   const periodDisplayLabel = () => {
@@ -905,7 +1047,12 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, justifyContent: "center" }}>
         <button
           onClick={() => movePeriod(-1)}
-          style={{ background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer" }}
+          disabled={!canGoBack}
+          style={{
+            background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 8, padding: "6px 10px",
+            color: canGoBack ? "#94a3b8" : "#2a2a3a",
+            cursor: canGoBack ? "pointer" : "not-allowed",
+          }}
         >
           <ChevronLeft size={16} />
         </button>
@@ -919,11 +1066,11 @@ function DailyCheckIn({ schedule }: { schedule: Schedule }) {
         </div>
         <button
           onClick={() => movePeriod(1)}
-          disabled={isCurrentPeriod}
+          disabled={!canGoForward}
           style={{
             background: "#1c1c28", border: "1px solid #2a2a3a", borderRadius: 8,
-            padding: "6px 10px", color: isCurrentPeriod ? "#2a2a3a" : "#94a3b8",
-            cursor: isCurrentPeriod ? "not-allowed" : "pointer",
+            padding: "6px 10px", color: canGoForward ? "#94a3b8" : "#2a2a3a",
+            cursor: canGoForward ? "pointer" : "not-allowed",
           }}
         >
           <ChevronRight size={16} />
@@ -1325,7 +1472,7 @@ export default function SchedulerPage() {
                       <div style={{ color: isActive ? "#a5b4fc" : "#e2e8f0", fontWeight: 600, fontSize: 14, marginBottom: 2 }}>
                         {s.name}
                       </div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
                           fontSize: 11, color: "#64748b",
                           background: "#1c1c28", padding: "2px 6px", borderRadius: 4,
@@ -1335,6 +1482,9 @@ export default function SchedulerPage() {
                         <span style={{ fontSize: 11, color: "#64748b" }}>
                           {s._count?.items ?? s.items.length} items
                         </span>
+                      </div>
+                      <div style={{ marginTop: 4 }}>
+                        <ScheduleDateRange schedule={s} compact />
                       </div>
                     </div>
                     <Tooltip title={s.isActive ? "Active — click to pause" : "Paused — click to activate"} placement="top">
@@ -1366,8 +1516,27 @@ export default function SchedulerPage() {
                     {selected.name}
                   </h2>
                   {selected.description && (
-                    <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{selected.description}</p>
+                    <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 6px" }}>{selected.description}</p>
                   )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 11, color: "#64748b",
+                      background: "#1c1c28", border: "1px solid #2a2a3a",
+                      padding: "2px 8px", borderRadius: 4,
+                    }}>
+                      {selected.type}
+                    </span>
+                    <ScheduleDateRange schedule={selected} />
+                    {!selected.isActive && (
+                      <span style={{
+                        fontSize: 11, color: "#f59e0b",
+                        background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)",
+                        padding: "2px 8px", borderRadius: 4,
+                      }}>
+                        Paused
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button

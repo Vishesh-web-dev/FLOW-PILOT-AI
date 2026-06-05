@@ -51,10 +51,12 @@ export const schedulerApi = {
     name: string;
     description?: string;
     type?: "DAILY" | "WEEKLY" | "MONTHLY";
+    startDate?: string; // "YYYY-MM-DD"
+    endDate?: string;   // "YYYY-MM-DD"
     items?: Array<{ title: string; description?: string; timeOfDay?: string; category?: string }>;
   }) => apiClient.post<ApiResponse<Schedule>>("/schedules", data),
 
-  update: (id: string, data: Partial<Pick<Schedule, "name" | "description" | "type" | "isActive">>) =>
+  update: (id: string, data: Partial<Pick<Schedule, "name" | "description" | "type" | "isActive" | "startDate" | "endDate">> & { clearStartDate?: boolean; clearEndDate?: boolean }) =>
     apiClient.put<ApiResponse<Schedule>>(`/schedules/${id}`, data),
 
   remove: (id: string) => apiClient.delete(`/schedules/${id}`),

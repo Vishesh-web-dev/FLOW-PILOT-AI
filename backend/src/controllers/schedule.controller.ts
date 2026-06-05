@@ -47,12 +47,20 @@ export const scheduleController = {
   async create(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const { name, description, type, items } = req.body as {
+      const { name, description, type, items, startDate, endDate } = req.body as {
         name: string;
         description?: string;
         type?: "DAILY" | "WEEKLY" | "MONTHLY";
         items?: Array<{ title: string; description?: string; timeOfDay?: string; category?: string; order?: number }>;
+        startDate?: string; // "YYYY-MM-DD"
+        endDate?: string;   // "YYYY-MM-DD"
       };
+
+      // Validate date range when both provided
+      if (startDate && endDate && startDate > endDate) {
+        sendError(res, "startDate must be before or equal to endDate", 400);
+        return;
+      }
 
       const schedule = await prisma.schedule.create({
         data: {
@@ -60,6 +68,8 @@ export const scheduleController = {
           description,
           type: type ?? "DAILY",
           userId,
+          startDate: startDate ? new Date(startDate + "T00:00:00.000Z") : undefined,
+          endDate:   endDate   ? new Date(endDate   + "T00:00:00.000Z") : undefined,
           items: items?.length
             ? {
                 create: items.map((item, idx) => ({
@@ -94,14 +104,31 @@ export const scheduleController = {
     try {
       const userId = req.user!.id;
       const { id } = req.params;
-      const { name, description, type, isActive } = req.body;
+      const { name, description, type, isActive, startDate, endDate, clearStartDate, clearEndDate } = req.body;
+
+      // Validate date range when both provided
+      if (startDate && endDate && startDate > endDate) {
+        sendError(res, "startDate must be before or equal to endDate", 400);
+        return;
+      }
 
       const existing = await prisma.schedule.findFirst({ where: { id, userId } });
       if (!existing) { sendNotFound(res, "Schedule not found"); return; }
 
+      // Build the data update object, supporting explicit nullification
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (type !== undefined) updateData.type = type;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (clearStartDate) updateData.startDate = null;
+      else if (startDate !== undefined) updateData.startDate = new Date(startDate + "T00:00:00.000Z");
+      if (clearEndDate) updateData.endDate = null;
+      else if (endDate !== undefined) updateData.endDate = new Date(endDate + "T00:00:00.000Z");
+
       const schedule = await prisma.schedule.update({
         where: { id },
-        data: { name, description, type, isActive },
+        data: updateData,
         include: { items: { orderBy: { order: "asc" } } },
       });
 
@@ -460,6 +487,8 @@ export const scheduleController = {
           description: result.description,
           type: result.type ?? "DAILY",
           userId,
+          startDate: result.startDate ? new Date(result.startDate + "T00:00:00.000Z") : undefined,
+          endDate:   result.endDate   ? new Date(result.endDate   + "T00:00:00.000Z") : undefined,
           items: {
             create: result.items.map((item, idx) => ({
               title: item.title,

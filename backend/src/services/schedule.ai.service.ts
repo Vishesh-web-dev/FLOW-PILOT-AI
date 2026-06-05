@@ -5,6 +5,8 @@ export interface ScheduleAIResult {
   name: string;
   description: string;
   type: "DAILY" | "WEEKLY" | "MONTHLY";
+  startDate?: string; // "YYYY-MM-DD" — only when a specific start date is clearly mentioned
+  endDate?: string;   // "YYYY-MM-DD" — only when a specific end date / duration is clearly mentioned
   items: Array<{
     title: string;
     description?: string;
@@ -22,6 +24,8 @@ JSON format:
   "name": "Schedule name",
   "description": "Brief description",
   "type": "DAILY",
+  "startDate": "YYYY-MM-DD",
+  "endDate": "YYYY-MM-DD",
   "items": [
     { "title": "Wake up", "description": "Optional detail", "timeOfDay": "06:00", "category": "health" }
   ]
@@ -33,7 +37,12 @@ Rules:
 - category: health | work | personal | learning | fitness | mindfulness
 - type: DAILY | WEEKLY | MONTHLY (infer from prompt, default DAILY)
 - Order items chronologically
-- Today: ${new Date().toISOString()}`;
+- startDate / endDate (both optional, format "YYYY-MM-DD"):
+    • Only include startDate when the user explicitly mentions a start date
+    • Only include endDate when the user explicitly mentions an end date or duration (e.g. "for 30 days", "until Dec 31")
+    • If neither date is mentioned, omit both fields entirely (lifetime schedule)
+    • Never invent dates that are not implied by the prompt
+- Today: ${new Date().toISOString().split("T")[0]}`;
 
 function parseScheduleResponse(content: string): ScheduleAIResult {
   // Strip markdown code fences if present
