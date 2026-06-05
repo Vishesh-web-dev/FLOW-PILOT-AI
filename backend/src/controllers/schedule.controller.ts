@@ -62,12 +62,17 @@ export const scheduleController = {
         return;
       }
 
+      // Active by default; auto-deactivate only if startDate is in the future
+      const todayStr = new Date().toISOString().split("T")[0];
+      const autoInactive = startDate ? startDate > todayStr : false;
+
       const schedule = await prisma.schedule.create({
         data: {
           name,
           description,
           type: type ?? "DAILY",
           userId,
+          isActive: !autoInactive,  // true by default; false only when startDate is future
           startDate: startDate ? new Date(startDate + "T00:00:00.000Z") : undefined,
           endDate:   endDate   ? new Date(endDate   + "T00:00:00.000Z") : undefined,
           items: items?.length
@@ -125,6 +130,17 @@ export const scheduleController = {
       else if (startDate !== undefined) updateData.startDate = new Date(startDate + "T00:00:00.000Z");
       if (clearEndDate) updateData.endDate = null;
       else if (endDate !== undefined) updateData.endDate = new Date(endDate + "T00:00:00.000Z");
+
+      if (isActive === undefined) {
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (startDate !== undefined && startDate > todayStr) {
+          // Auto-deactivate when startDate is set to a future date
+          updateData.isActive = false;
+        } else if (clearStartDate) {
+          // Re-activate when the startDate (the reason for being inactive) is removed
+          updateData.isActive = true;
+        }
+      }
 
       const schedule = await prisma.schedule.update({
         where: { id },

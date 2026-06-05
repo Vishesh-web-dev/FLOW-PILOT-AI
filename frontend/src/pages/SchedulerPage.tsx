@@ -43,6 +43,7 @@ import {
   Zap,
   Activity,
   CalendarRange,
+  CalendarDays,
   GripVertical,
   Infinity,
 } from "lucide-react";
@@ -1567,30 +1568,68 @@ export default function SchedulerPage() {
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid #1e1e2a", paddingBottom: 12 }}>
-                {([
-                  { key: "checkin", label: "Daily Check-in", icon: <CheckCircle2 size={14} /> },
-                  { key: "analytics", label: "Analytics", icon: <BarChart2 size={14} /> },
-                ] as const).map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "8px 16px", borderRadius: 8, border: "none",
-                      background: tab === t.key ? "rgba(99,102,241,0.15)" : "transparent",
-                      color: tab === t.key ? "#a5b4fc" : "#64748b",
-                      cursor: "pointer", fontWeight: 600, fontSize: 13,
-                    }}
-                  >
-                    {t.icon} {t.label}
-                  </button>
-                ))}
-              </div>
+              {/* Tabs + content */}
+              {(() => {
+                const todayStr = dayjs().format("YYYY-MM-DD");
+                const isNotStartedYet = selected.startDate
+                  ? toDateOnly(selected.startDate) > todayStr
+                  : false;
 
-              {tab === "checkin" && <DailyCheckIn schedule={selected} />}
-              {tab === "analytics" && <AnalyticsView schedule={selected} />}
+                if (isNotStartedYet) {
+                  const startFormatted = dayjs(toDateOnly(selected.startDate!), "YYYY-MM-DD").format("MMM D, YYYY");
+                  return (
+                    <div style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      padding: "60px 24px", gap: 12, textAlign: "center",
+                      background: "rgba(99,102,241,0.04)", border: "1px dashed rgba(99,102,241,0.2)",
+                      borderRadius: 12,
+                    }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: "50%",
+                        background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <CalendarDays size={22} color="#a5b4fc" />
+                      </div>
+                      <div>
+                        <p style={{ color: "#a5b4fc", fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>
+                          Starts on {startFormatted}
+                        </p>
+                        <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>
+                          This schedule hasn't started yet. Check back on {startFormatted}.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid #1e1e2a", paddingBottom: 12 }}>
+                      {([
+                        { key: "checkin", label: "Daily Check-in", icon: <CheckCircle2 size={14} /> },
+                        { key: "analytics", label: "Analytics", icon: <BarChart2 size={14} /> },
+                      ] as const).map((t) => (
+                        <button
+                          key={t.key}
+                          onClick={() => setTab(t.key)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "8px 16px", borderRadius: 8, border: "none",
+                            background: tab === t.key ? "rgba(99,102,241,0.15)" : "transparent",
+                            color: tab === t.key ? "#a5b4fc" : "#64748b",
+                            cursor: "pointer", fontWeight: 600, fontSize: 13,
+                          }}
+                        >
+                          {t.icon} {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    {tab === "checkin" && <DailyCheckIn schedule={selected} />}
+                    {tab === "analytics" && <AnalyticsView schedule={selected} />}
+                  </>
+                );
+              })()}
             </div>
           ) : (
             <div style={{

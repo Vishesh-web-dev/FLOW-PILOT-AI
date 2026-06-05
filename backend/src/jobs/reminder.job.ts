@@ -79,7 +79,7 @@ export const startReminderJob = (): void => {
       // "Today" as UTC midnight — any endDate strictly before today has expired
       const todayMidnight = new Date(new Date().toISOString().split("T")[0] + "T00:00:00.000Z");
 
-      const result = await prisma.schedule.updateMany({
+      const deactivated = await prisma.schedule.updateMany({
         where: {
           isActive: true,
           endDate: { lt: todayMidnight },
@@ -87,11 +87,35 @@ export const startReminderJob = (): void => {
         data: { isActive: false },
       });
 
-      if (result.count > 0) {
-        logger.info(`Auto-deactivated ${result.count} expired schedule(s)`);
+      if (deactivated.count > 0) {
+        logger.info(`Auto-deactivated ${deactivated.count} expired schedule(s)`);
       }
     } catch (error) {
       logger.error("Schedule auto-deactivation job error:", error);
+    }
+  });
+
+  // ── Auto-activate schedules whose startDate is reached today ─────────────────
+  cron.schedule("10 0 * * *", async () => {
+    try {
+      // Match schedules whose startDate is exactly today (UTC midnight)
+      const todayMidnight = new Date(new Date().toISOString().split("T")[0] + "T00:00:00.000Z");
+
+      const activated = await prisma.schedule.updateMany({
+        where: {
+          isActive: false,
+          startDate: { equals: todayMidnight },
+          // Only activate if endDate hasn't also passed
+          OR: [{ endDate: null }, { endDate: { gte: todayMidnight } }],
+        },
+        data: { isActive: true },
+      });
+
+      if (activated.count > 0) {
+        logger.info(`Auto-activated ${activated.count} schedule(s) whose startDate is today`);
+      }
+    } catch (error) {
+      logger.error("Schedule auto-activation job error:", error);
     }
   });
 
