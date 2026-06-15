@@ -8,10 +8,6 @@ import toast from "react-hot-toast";
 type SocketEvent = keyof SocketEvents;
 type EventCallback<T extends SocketEvent> = (data: SocketEvents[T]) => void;
 
-let socket: Socket | null = null;
-
-export const getSocket = (): Socket | null => socket;
-
 export const useSocket = () => {
   const { token, isAuthenticated } = useAuthStore();
   const socketRef = useRef<Socket | null>(null);
@@ -27,8 +23,6 @@ export const useSocket = () => {
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
     });
-
-    socket = socketRef.current;
 
     socketRef.current.on("connect", () => {
       console.log("✅ Socket connected:", socketRef.current?.id);
@@ -180,7 +174,7 @@ export const useSocket = () => {
 
     return () => {
       socketRef.current?.disconnect();
-      socket = null;
+      socketRef.current = null;
     };
   }, [isAuthenticated, token, queryClient]);
 

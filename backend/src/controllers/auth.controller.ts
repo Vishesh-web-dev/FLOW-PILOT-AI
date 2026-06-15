@@ -14,6 +14,7 @@ import { AuthRequest } from "../types";
 import { logger } from "../utils/logger";
 import { activityService } from "../services/activity.service";
 import { cloudinary } from "../config/cloudinary";
+import { getPublicKeyPem } from "../utils/crypto";
 
 // Zod Schemas
 export const registerSchema = z.object({
@@ -28,6 +29,12 @@ export const loginSchema = z.object({
 });
 
 export const authController = {
+  // GET /api/auth/public-key
+  // Returns the RSA public key the frontend uses to encrypt passwords in transit.
+  async getPublicKey(_req: AuthRequest, res: Response): Promise<void> {
+    sendSuccess(res, { publicKey: getPublicKeyPem() }, "Public key retrieved");
+  },
+
   // POST /api/auth/register
   async register(req: AuthRequest, res: Response): Promise<void> {
     try {

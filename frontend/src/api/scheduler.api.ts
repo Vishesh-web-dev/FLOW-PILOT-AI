@@ -79,6 +79,22 @@ export const schedulerApi = {
   reorderItems: (scheduleId: string, items: Array<{ id: string; order: number }>) =>
     apiClient.put(`/schedules/${scheduleId}/items/reorder`, { items }),
 
+  // Atomically save schedule metadata + full item list in one transaction.
+  sync: (
+    scheduleId: string,
+    data: {
+      name?: string;
+      description?: string;
+      type?: "DAILY" | "WEEKLY" | "MONTHLY";
+      isActive?: boolean;
+      startDate?: string;
+      endDate?: string;
+      clearStartDate?: boolean;
+      clearEndDate?: boolean;
+      items: Array<{ id?: string; title: string; description?: string | null; timeOfDay?: string | null; category?: string | null }>;
+    }
+  ) => apiClient.put<ApiResponse<Schedule>>(`/schedules/${scheduleId}/sync`, data),
+
   // Logs
   getLogs: (scheduleId: string, date: string) =>
     apiClient.get<ApiResponse<ScheduleLog[]>>(`/schedules/${scheduleId}/logs?date=${date}`),

@@ -26,7 +26,17 @@ function parseAIResponse(content: string): AIActionResult {
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim();
-  return JSON.parse(cleaned) as AIActionResult;
+  try {
+    return JSON.parse(cleaned) as AIActionResult;
+  } catch {
+    // The model returned something that isn't valid JSON (truncated output,
+    // stray prose, etc.). Surface a descriptive error instead of a bare
+    // SyntaxError so the cause is visible in logs and the API response.
+    logger.error("AI response was not valid JSON:", { preview: cleaned.slice(0, 200) });
+    const err = new Error("AI returned an invalid response. Please rephrase your command and try again.");
+    (err as { isUserFacing?: boolean }).isUserFacing = true;
+    throw err;
+  }
 }
 
 // ─── OpenAI call ──────────────────────────────────────────────────────────────
@@ -78,6 +88,11 @@ export async function callAI(systemPrompt: string, userMessage: string, maxToken
 
 export function handleAIError(error: unknown): never {
   logger.error("AI service error:", error);
+  // Preserve already-descriptive, user-facing errors (e.g. invalid AI JSON)
+  // instead of masking them with the generic fallback below.
+  if (error instanceof Error && (error as { isUserFacing?: boolean }).isUserFacing) {
+    throw error;
+  }
   if (error && typeof error === "object") {
     // OpenAI specific
     if ("status" in error) {

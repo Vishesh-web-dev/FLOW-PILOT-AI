@@ -105,10 +105,24 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
       logger.error(`Failed to auto-join project rooms for user ${userId}:`, err);
     }
 
-    // Handle joining project rooms (for when user joins a new project dynamically)
-    socket.on("join:project", (projectId: string) => {
-      socket.join(`project:${projectId}`);
-      logger.debug(`User ${userId} joined project room: ${projectId}`);
+    // Handle joining project rooms (for when user joins a new project dynamically).
+    // Only allow joining a project the user actually owns or belongs to — otherwise
+    // anyone could subscribe to another team's real-time events by guessing an id.
+    socket.on("join:project", async (projectId: string) => {
+      try {
+        const allowed = await prisma.project.findFirst({
+          where: { id: projectId, OR: [{ userId }, { members: { some: { userId } } }] },
+          select: { id: true },
+        });
+        if (!allowed) {
+          logger.warn(`User ${userId} denied join to project room: ${projectId}`);
+          return;
+        }
+        socket.join(`project:${projectId}`);
+        logger.debug(`User ${userId} joined project room: ${projectId}`);
+      } catch (err) {
+        logger.error(`join:project authorization failed for user ${userId}:`, err);
+      }
     });
 
     // Handle leaving project rooms
@@ -116,9 +130,25 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
       socket.leave(`project:${projectId}`);
     });
 
-    // Handle joining sprint rooms
-    socket.on("join:sprint", (sprintId: string) => {
-      socket.join(`sprint:${sprintId}`);
+    // Handle joining sprint rooms — only sprints the user owns or that belong to
+    // a project they are a member of.
+    socket.on("join:sprint", async (sprintId: string) => {
+      try {
+        const allowed = await prisma.sprint.findFirst({
+          where: {
+            id: sprintId,
+            OR: [{ userId }, { project: { members: { some: { userId } } } }],
+          },
+          select: { id: true },
+        });
+        if (!allowed) {
+          logger.warn(`User ${userId} denied join to sprint room: ${sprintId}`);
+          return;
+        }
+        socket.join(`sprint:${sprintId}`);
+      } catch (err) {
+        logger.error(`join:sprint authorization failed for user ${userId}:`, err);
+      }
     });
 
     // Handle ping for connection check

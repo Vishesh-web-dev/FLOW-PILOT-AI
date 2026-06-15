@@ -128,19 +128,20 @@ export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly, noPro
       const activeId = active.id as string;
       const overId = over.id as string;
 
-      const activeContainer = findContainer(columnMap, activeId);
-      if (!activeContainer) return;
-
       // overId is either a column id or a task id
       const isOverColumn = KANBAN_COLUMNS.some((col) => col.id === overId);
-      const overContainer = isOverColumn
-        ? overId
-        : findContainer(columnMap, overId);
-
-      if (!overContainer || activeContainer === overContainer) return;
 
       // ── Moving to a different column ──────────────────────────────────────
+      // Resolve the source/destination containers from `prev` (the freshest
+      // state) inside the updater, not from the closure's `columnMap`, which can
+      // lag a render behind during a fast drag and move the card to the wrong column.
       setColumnMap((prev) => {
+        const activeContainer = findContainer(prev, activeId);
+        if (!activeContainer) return prev;
+
+        const overContainer = isOverColumn ? overId : findContainer(prev, overId);
+        if (!overContainer || activeContainer === overContainer) return prev;
+
         const sourceItems = [...(prev[activeContainer] ?? [])];
         const destItems = [...(prev[overContainer] ?? [])];
 
@@ -170,7 +171,7 @@ export default function KanbanBoard({ projectIds, sprintIds, noSprintOnly, noPro
         };
       });
     },
-    [columnMap]
+    []
   );
 
   const handleDragEnd = useCallback(

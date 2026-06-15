@@ -19,7 +19,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
 
       setAuth: (user: User, token: string) => {
-        localStorage.setItem("flowpilot_token", token);
+        // Persisted by zustand's persist middleware under "flowpilot_auth".
         set({ user, token, isAuthenticated: true });
       },
 
@@ -30,8 +30,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        localStorage.removeItem("flowpilot_token");
-        localStorage.removeItem("flowpilot_user");
+        // Clearing state triggers persist to overwrite "flowpilot_auth" with
+        // the empty session, so nothing stale survives a reload.
         set({ user: null, token: null, isAuthenticated: false });
       },
     }),

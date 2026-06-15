@@ -1,5 +1,6 @@
 import apiClient from "./client";
 import { ApiResponse, User } from "../types";
+import { encryptPassword } from "./crypto";
 
 export interface LoginCredentials {
   email: string;
@@ -18,11 +19,24 @@ export interface AuthResponse {
 }
 
 export const authApi = {
-  login: (credentials: LoginCredentials) =>
-    apiClient.post<ApiResponse<AuthResponse>>("/auth/login", credentials),
+  login: async (credentials: LoginCredentials) => {
+    const pw = await encryptPassword(credentials.password);
+    return apiClient.post<ApiResponse<AuthResponse>>("/auth/login", {
+      email: credentials.email,
+      password: pw.value,
+      encrypted: pw.encrypted,
+    });
+  },
 
-  register: (credentials: RegisterCredentials) =>
-    apiClient.post<ApiResponse<AuthResponse>>("/auth/register", credentials),
+  register: async (credentials: RegisterCredentials) => {
+    const pw = await encryptPassword(credentials.password);
+    return apiClient.post<ApiResponse<AuthResponse>>("/auth/register", {
+      name: credentials.name,
+      email: credentials.email,
+      password: pw.value,
+      encrypted: pw.encrypted,
+    });
+  },
 
   demoLogin: () =>
     apiClient.post<ApiResponse<AuthResponse>>("/auth/demo"),
@@ -32,8 +46,16 @@ export const authApi = {
   updateProfile: (data: { name?: string; avatar?: string }) =>
     apiClient.put<ApiResponse<User>>("/auth/profile", data),
 
-  changePassword: (data: { currentPassword: string; newPassword: string }) =>
-    apiClient.put<ApiResponse<null>>("/auth/password", data),
+  changePassword: async (data: { currentPassword: string; newPassword: string }) => {
+    const cur = await encryptPassword(data.currentPassword);
+    const next = await encryptPassword(data.newPassword);
+    // Both fields use the same key, so the encrypted flag is consistent.
+    return apiClient.put<ApiResponse<null>>("/auth/password", {
+      currentPassword: cur.value,
+      newPassword: next.value,
+      encrypted: cur.encrypted && next.encrypted,
+    });
+  },
 
   uploadAvatar: (file: File) => {
     const formData = new FormData();

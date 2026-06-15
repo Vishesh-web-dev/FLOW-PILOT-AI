@@ -12,13 +12,15 @@ export const startReminderJob = (): void => {
       const now = new Date();
       const oneMinuteLater = new Date(now.getTime() + 60 * 1000);
 
-      // Find upcoming reminders (due in the next minute)
+      // Find upcoming reminders (due in the next minute).
+      // Upper bound is EXCLUSIVE (lt) so a reminder landing exactly on a minute
+      // boundary is picked up by a single tick, never two consecutive ones.
       const dueReminders = await prisma.reminder.findMany({
         where: {
           isCompleted: false,
           remindAt: {
             gte: now,
-            lte: oneMinuteLater,
+            lt: oneMinuteLater,
           },
         },
         include: {
@@ -30,18 +32,19 @@ export const startReminderJob = (): void => {
         logger.info(`Processing ${dueReminders.length} due reminders`);
 
         for (const reminder of dueReminders) {
+          // Mark completed FIRST (durable) so an overlapping tick or a crash can
+          // never re-deliver the same reminder. The socket emit follows.
+          await prisma.reminder.update({
+            where: { id: reminder.id },
+            data: { isCompleted: true },
+          });
+
           // Emit reminder notification to user via socket
           emitToUser(reminder.userId, "reminder:due", {
             id: reminder.id,
             title: reminder.title,
             description: reminder.description,
             remindAt: reminder.remindAt,
-          });
-
-          // Mark as completed so it doesn't fire again next minute
-          await prisma.reminder.update({
-            where: { id: reminder.id },
-            data: { isCompleted: true },
           });
 
           logger.info(`Reminder triggered: "${reminder.title}" for user ${reminder.userId}`);

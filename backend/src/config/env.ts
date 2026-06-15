@@ -23,6 +23,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  // Optional RSA keypair for password transport encryption. If unset, an
+  // ephemeral keypair is generated at boot (fine for a single instance).
+  PASSWORD_RSA_PUBLIC_KEY: z.string().optional(),
+  PASSWORD_RSA_PRIVATE_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

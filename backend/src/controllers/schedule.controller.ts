@@ -162,6 +162,122 @@ export const scheduleController = {
     }
   },
 
+  // ── PUT /api/schedules/:id/sync ─────────────────────────────────────────────
+  // Atomically update schedule metadata AND its full item list in one
+  // transaction (replaces the previous N parallel add/update/delete calls,
+  // which could leave the schedule half-saved if one request failed).
+  // Body: { name?, description?, type?, isActive?, startDate?, endDate?,
+  //         clearStartDate?, clearEndDate?, items: Array<{ id?, title, ... }> }
+  async syncSchedule(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { id } = req.params;
+      const {
+        name, description, type, isActive,
+        startDate, endDate, clearStartDate, clearEndDate,
+        items,
+      } = req.body as {
+        name?: string;
+        description?: string;
+        type?: "DAILY" | "WEEKLY" | "MONTHLY";
+        isActive?: boolean;
+        startDate?: string;
+        endDate?: string;
+        clearStartDate?: boolean;
+        clearEndDate?: boolean;
+        items?: Array<{ id?: string; title: string; description?: string | null; timeOfDay?: string | null; category?: string | null }>;
+      };
+
+      if (startDate && endDate && startDate > endDate) {
+        sendError(res, "startDate must be before or equal to endDate", 400);
+        return;
+      }
+
+      const existing = await prisma.schedule.findFirst({
+        where: { id, userId },
+        include: { items: true },
+      });
+      if (!existing) { sendNotFound(res, "Schedule not found"); return; }
+
+      // Build the metadata update (same semantics as update())
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (type !== undefined) updateData.type = type;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (clearStartDate) updateData.startDate = null;
+      else if (startDate !== undefined) updateData.startDate = new Date(startDate + "T00:00:00.000Z");
+      if (clearEndDate) updateData.endDate = null;
+      else if (endDate !== undefined) updateData.endDate = new Date(endDate + "T00:00:00.000Z");
+
+      if (isActive === undefined) {
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (startDate !== undefined && startDate > todayStr) {
+          updateData.isActive = false;
+        } else if (clearStartDate) {
+          updateData.isActive = true;
+        }
+      }
+
+      const itemsInput = Array.isArray(items) ? items : [];
+      const keepIds = new Set(itemsInput.filter((i) => i.id).map((i) => i.id!));
+      const toDelete = existing.items.filter((i) => !keepIds.has(i.id)).map((i) => i.id);
+
+      const schedule = await prisma.$transaction(async (tx) => {
+        await tx.schedule.update({ where: { id }, data: updateData });
+
+        if (toDelete.length > 0) {
+          await tx.scheduleItem.deleteMany({ where: { id: { in: toDelete }, scheduleId: id } });
+        }
+
+        // Upsert items, assigning order by array index to preserve modal order
+        for (let idx = 0; idx < itemsInput.length; idx++) {
+          const item = itemsInput[idx];
+          if (item.id) {
+            await tx.scheduleItem.update({
+              where: { id: item.id },
+              data: {
+                title: item.title,
+                description: item.description ?? null,
+                timeOfDay: item.timeOfDay ?? null,
+                category: item.category ?? null,
+                order: idx,
+              },
+            });
+          } else {
+            await tx.scheduleItem.create({
+              data: {
+                title: item.title,
+                description: item.description ?? null,
+                timeOfDay: item.timeOfDay ?? null,
+                category: item.category ?? null,
+                order: idx,
+                scheduleId: id,
+              },
+            });
+          }
+        }
+
+        return tx.schedule.findFirst({
+          where: { id },
+          include: { items: { orderBy: { order: "asc" } } },
+        });
+      });
+
+      await activityService.log({
+        userId,
+        type: "SCHEDULE_UPDATED",
+        description: `Updated schedule: "${schedule?.name ?? existing.name}"`,
+        metadata: { scheduleId: id, itemCount: itemsInput.length },
+      });
+
+      sendSuccess(res, schedule, "Schedule saved");
+    } catch (error) {
+      logger.error("SyncSchedule error:", error);
+      sendError(res, "Failed to save schedule");
+    }
+  },
+
   // ── DELETE /api/schedules/:id ───────────────────────────────────────────────
   async remove(req: AuthRequest, res: Response): Promise<void> {
     try {

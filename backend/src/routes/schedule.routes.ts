@@ -11,6 +11,7 @@ router.get("/", scheduleController.getAll);
 router.post("/", scheduleController.create);
 router.post("/ai-generate", scheduleController.aiGenerate);
 router.get("/:id", scheduleController.getOne);
+router.put("/:id/sync", scheduleController.syncSchedule);
 router.put("/:id", scheduleController.update);
 router.delete("/:id", scheduleController.remove);
 

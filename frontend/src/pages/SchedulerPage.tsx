@@ -324,46 +324,25 @@ function ScheduleModal({
 
   const updateScheduleMutation = useMutation({
     mutationFn: async () => {
-      // 1. Update schedule metadata (including optional date range)
+      // Single transactional save: metadata + delete-removed + update/add items.
+      // The backend assigns order by array index, so the modal order is preserved.
       const startStr = startDate ? startDate.format("YYYY-MM-DD") : undefined;
       const endStr   = endDate   ? endDate.format("YYYY-MM-DD")   : undefined;
-      await schedulerApi.update(editSchedule!.id, {
+      const res = await schedulerApi.sync(editSchedule!.id, {
         name, description, type,
         startDate: startStr,
         endDate:   endStr,
         // Explicitly clear a date if user removed it
         clearStartDate: !startDate && !!editSchedule!.startDate,
         clearEndDate:   !endDate   && !!editSchedule!.endDate,
+        items: items.map((item) => ({
+          ...(item.id ? { id: item.id } : {}),
+          title: item.title,
+          description: item.description || null,
+          timeOfDay: item.timeOfDay || null,
+          category: item.category,
+        })),
       });
-
-      // 2. Delete items that were removed in the modal
-      const currentIds = new Set(items.filter((i) => i.id).map((i) => i.id!));
-      const toDelete = editSchedule!.items.filter((i) => !currentIds.has(i.id));
-      await Promise.all(toDelete.map((i) => schedulerApi.deleteItem(editSchedule!.id, i.id)));
-
-      // 3. Update existing items + add new items (preserves order from modal)
-      await Promise.all(
-        items.map((item, idx) =>
-          item.id
-            ? schedulerApi.updateItem(editSchedule!.id, item.id, {
-                title: item.title,
-                description: item.description || null,
-                timeOfDay: item.timeOfDay || null,
-                category: item.category,
-                order: idx,
-              })
-            : schedulerApi.addItem(editSchedule!.id, {
-                title: item.title,
-                description: item.description || undefined,
-                timeOfDay: item.timeOfDay || undefined,
-                category: item.category,
-                order: idx,
-              })
-        )
-      );
-
-      // 4. Return refreshed schedule with updated items
-      const res = await schedulerApi.getOne(editSchedule!.id);
       return res.data.data!;
     },
     onSuccess: (s) => {

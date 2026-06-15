@@ -89,16 +89,6 @@ export const aiController = {
         sprints: userSprints,
       });
 
-      // Store AI command history
-      await prisma.aICommand.create({
-        data: {
-          userId,
-          input: command,
-          output: aiResult as any,
-          actionType: aiResult.type,
-        },
-      });
-
       // Log AI command activity
       await activityService.log({
         userId,
@@ -116,6 +106,18 @@ export const aiController = {
         userProjects.map((p) => ({ id: p.id, name: p.name })),
         members
       );
+
+      // Store AI command history AFTER execution so the recorded output
+      // reflects what actually happened (a failed execution throws above and
+      // is never logged as a successful command).
+      await prisma.aICommand.create({
+        data: {
+          userId,
+          input: command,
+          output: { ...aiResult, executed: executedResult } as any,
+          actionType: aiResult.type,
+        },
+      });
 
       // Emit real-time update
       emitToUser(userId, "ai:action_executed", {
@@ -252,6 +254,34 @@ async function executeAIAction(
         return { created: 0 };
       }
 
+      // Pre-compute the starting position per status with ONE query each
+      // (instead of one query per task), then assign positions deterministically.
+      // This avoids the N+1 pattern and the race where concurrent queries all
+      // read the same max before any insert commits.
+      const distinctStatuses = Array.from(
+        new Set(aiResult.tasks.map((t) => (t.status as any) || "TODO"))
+      );
+      const statusBasePosition: Record<string, number> = {};
+      await Promise.all(
+        distinctStatuses.map(async (st) => {
+          const maxPos = await prisma.task.findFirst({
+            where: { userId, status: st },
+            orderBy: { position: "desc" },
+            select: { position: true },
+          });
+          statusBasePosition[st] = maxPos?.position ?? -1;
+        })
+      );
+      // Position for each task = base for its status + its 0-based rank among
+      // same-status tasks in this batch + 1.
+      const statusSeen: Record<string, number> = {};
+      const taskPositions = aiResult.tasks.map((t) => {
+        const st = (t.status as any) || "TODO";
+        const offset = statusSeen[st] ?? 0;
+        statusSeen[st] = offset + 1;
+        return (statusBasePosition[st] ?? -1) + offset + 1;
+      });
+
       const createdTasks = await Promise.all(
         aiResult.tasks.map(async (taskData, index) => {
           const taskStatus = (taskData.status as any) || "TODO";
@@ -280,12 +310,6 @@ async function executeAIAction(
             if (foundSprint) resolvedSprintId = foundSprint.id;
           }
 
-          const maxPos = await prisma.task.findFirst({
-            where: { userId, status: taskStatus },
-            orderBy: { position: "desc" },
-            select: { position: true },
-          });
-
           return prisma.task.create({
             data: {
               title: taskData.title,
@@ -299,7 +323,7 @@ async function executeAIAction(
               ...(resolvedProjectId && { projectId: resolvedProjectId }),
               ...(resolvedSprintId && { sprintId: resolvedSprintId }),
               ...(resolvedAssigneeId && { assigneeId: resolvedAssigneeId }),
-              position: (maxPos?.position ?? -1) + index + 1,
+              position: taskPositions[index],
             },
             include: {
               project: { select: { id: true, name: true, color: true } },
